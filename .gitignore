@@ -1,0 +1,7 @@
+dist/
+checkmate
+*.cklb
+*.cklb.provenance.json
+*.results.xml
+*.results.arf.xml
+*.report.html
