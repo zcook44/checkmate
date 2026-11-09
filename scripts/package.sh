@@ -12,7 +12,12 @@ for arch in amd64 arm64; do
   mkdir -p "release/$name"
   GOOS=linux GOARCH="$arch" go build -mod=vendor -trimpath -ldflags='-s -w' -o "release/$name/checkmate" .
   cp README.md "release/$name/README.md"
-  if [[ "$arch" == amd64 ]]; then cp "release/$name/checkmate" release/checkmate; fi
+  if [[ "$arch" == amd64 ]]; then
+    direct_tmp=$(mktemp release/.checkmate.XXXXXX)
+    cp "release/$name/checkmate" "$direct_tmp"
+    chmod 755 "$direct_tmp"
+    mv -f "$direct_tmp" release/checkmate
+  fi
   tar -C release -czf "release/$name.tar.gz" "$name"
   (cd release && sha256sum "$name.tar.gz") >> release/SHA256SUMS
   rm -r "release/$name"

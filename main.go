@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
+
 	"sort"
 	"strings"
 	"unicode"
@@ -38,6 +38,7 @@ type model struct {
 	files                        []checklist.File
 	groups                       []group
 	cursor, host, filter         int
+	height, detailOffset         int
 	stage                        stage
 	target, note, query, message string
 	width                        int
@@ -47,7 +48,7 @@ var filters = []string{"all", "not_reviewed", "open", "not_a_finding", "not_appl
 var choices = []string{"open", "not_a_finding", "not_applicable", "not_reviewed"}
 
 func newModel(files []checklist.File) model {
-	m := model{files: files, width: 100}
+	m := model{files: files, width: 100, height: 30}
 	indexes := map[string]int{}
 	for fi, f := range files {
 		for ri, r := range f.Rules {
@@ -128,6 +129,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
+		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
 		k := msg.String()
@@ -162,6 +164,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if strings.TrimSpace(m.note) != "" {
 					m.stage = confirm
+					m.host = 0
 				} else {
 					m.message = "A comment is required"
 				}
@@ -192,6 +195,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.stage == confirm {
+			m.moveHost(k, m.selectedCount())
 			if k == "esc" || k == "n" {
 				m.stage = browse
 				return m, nil
@@ -202,6 +206,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.stage == details {
+			switch k {
+			case "j", "down":
+				m.detailOffset++
+			case "k", "up":
+				m.detailOffset = max(0, m.detailOffset-1)
+			case "pgdown":
+				m.detailOffset += m.pageSize()
+			case "pgup":
+				m.detailOffset = max(0, m.detailOffset-m.pageSize())
+			case "home":
+				m.detailOffset = 0
+			}
 			if k == "esc" || k == "v" {
 				m.stage = browse
 			}
@@ -221,6 +237,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(visible) > 0 {
 				m.host = (m.host + 1) % len(m.groups[visible[m.cursor]].matches)
 			}
+		case "shift+tab":
+			if len(visible) > 0 {
+				m.host = (m.host + len(m.groups[visible[m.cursor]].matches) - 1) % len(m.groups[visible[m.cursor]].matches)
+			}
+		case "pgdown", "pgup", "home", "end":
+			if len(visible) > 0 {
+				m.moveHost(k, len(m.groups[visible[m.cursor]].matches))
+			}
 		case "space", " ":
 			if len(visible) > 0 {
 				g := &m.groups[visible[m.cursor]]
@@ -235,6 +259,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "v":
 			if len(visible) > 0 {
 				m.stage = details
+				m.detailOffset = 0
 			}
 		case "e", "enter":
 			if len(visible) > 0 {
@@ -305,64 +330,7 @@ func clip(s string, max int) string {
 	}
 	return s
 }
-func (m model) View() string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "CHECKMATE  |  CKLB review  |  %d files  |  %d control groups\n", len(m.files), len(m.groups))
-	fmt.Fprintf(&b, "Filter: %s  Search: %s  (%d matches)\n", filters[m.filter], m.query, len(m.visible()))
-	if m.message != "" {
-		fmt.Fprintf(&b, "\n%s\n", safe(m.message))
-	}
-	visible := m.visible()
-	if len(visible) == 0 {
-		b.WriteString("\nNo controls match.  / search  f filter  q quit\n")
-		return b.String()
-	}
-	g := m.groups[visible[m.cursor]]
-	r := g.sample
-	fmt.Fprintf(&b, "\n[%d/%d] %s  %s  severity: %s\n", m.cursor+1, len(visible), safe(r.Benchmark), safe(r.ID), strings.ToUpper(safe(r.Severity)))
-	fmt.Fprintf(&b, "Rule: %s  |  Release: %s\n", safe(r.RuleID), safe(r.Release))
-	fmt.Fprintf(&b, "Summary: %s\n", clip(safe(r.Title), max(40, m.width-10)))
-	b.WriteString("\nAffected checklists (Tab: focus host; Space: include/exclude):\n")
-	for i, ref := range g.matches {
-		row := m.files[ref.file].Rules[ref.rule]
-		selected := "x"
-		if !ref.selected {
-			selected = " "
-		}
-		focus := " "
-		if i == m.host {
-			focus = ">"
-		}
-		fmt.Fprintf(&b, "%s [%s] %-22s  %-18s  %s\n", focus, selected, clip(safe(filepath.Base(filepath.Dir(m.files[ref.file].Path))), 22), row.Status, clip(safe(m.files[ref.file].Path), max(30, m.width-60)))
-	}
-	focused := g.matches[m.host]
-	current := m.files[focused.file].Rules[focused.rule]
-	if m.stage == details {
-		return fmt.Sprintf("Full finding details | %s %s | %s\n\n%s\n\nFull current comment:\n%s\n\nEsc or v: return\n", safe(current.Benchmark), safe(current.ID), safe(m.files[focused.file].Path), safe(current.Findings), safe(current.Comment))
-	}
-	fmt.Fprintf(&b, "\nFocused host: %s\n", safe(m.files[focused.file].Path))
-	fmt.Fprintf(&b, "Current status: %s\nCurrent comment: %s\n", current.Status, clip(safe(current.Comment), max(50, m.width-8)))
-	fmt.Fprintf(&b, "Finding details: %s\n", clip(safe(current.Findings), max(80, m.width-8)))
-	switch m.stage {
-	case browse:
-		b.WriteString("\nj/k navigate  Tab host  Space select  v full details  e edit  f filter  / search  q quit\n")
-	case search:
-		fmt.Fprintf(&b, "\nSearch: %s_  Enter apply  Esc cancel\n", m.query)
-	case choose:
-		b.WriteString("\nChoose state: [1] Open  [2] Not a Finding  [3] Not Applicable  [4] Not Reviewed  Esc cancel\n")
-	case comment:
-		fmt.Fprintf(&b, "\nNew state: %s\nComment (required): %s_\nEnter review change  Esc cancel\n", m.target, m.note)
-	case confirm:
-		fmt.Fprintf(&b, "\nCONFIRM: %s -> %s\nComment: %s\n", r.ID, m.target, m.note)
-		for _, ref := range g.matches {
-			if ref.selected {
-				fmt.Fprintf(&b, "UPDATE %s\n", safe(m.files[ref.file].Path))
-			}
-		}
-		b.WriteString("Existing CKLB files replaced; provenance sidecars remain stale.\nY/Enter apply  N/Esc cancel\n")
-	}
-	return b.String()
-}
+func (m model) View() string { return m.render() }
 func max(a, b int) int {
 	if a > b {
 		return a
