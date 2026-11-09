@@ -79,9 +79,16 @@ func (m model) frame(lines []string) string {
 func (m model) separator() string { return strings.Repeat("─", max(36, m.width-4)) }
 func (m model) render() string {
 	visible := m.visible()
-	lines := []string{fmt.Sprintf("CHECKMATE   %d checklist(s)  ·  %d control groups", len(m.files), len(m.groups)), fmt.Sprintf("Filter: %s   Search: %s   %d matches", filters[m.filter], safe(m.query), len(visible)), m.separator()}
+	lines := []string{fmt.Sprintf("CHECKMATE   %d checklist(s)  ·  %d control groups", len(m.files), len(m.groups)), fmt.Sprintf("Status: %s  Severity: %s  Search: %s  Host: %s  %d matches", filters[m.filter], severities[m.severityFilter], safe(m.query), safe(m.hostQuery), len(visible)), m.separator()}
 	if len(visible) == 0 {
-		return m.frame(append(lines, "No matching controls.", m.separator(), "/ search  f filter  q quit"))
+		lines = append(lines, "No matching controls.", m.separator(), "/ control search  h host search  f status  F severity  q quit")
+		if m.stage == hostSearch {
+			lines = append(lines, "Host search: "+safe(m.hostQuery)+"_  Enter accept  Esc cancel")
+		}
+		if m.stage == search {
+			lines = append(lines, "Search: "+safe(m.query)+"_  Enter accept  Esc cancel")
+		}
+		return m.frame(lines)
 	}
 	g := m.groups[visible[m.cursor]]
 	r := g.sample
@@ -91,14 +98,21 @@ func (m model) render() string {
 	if m.stage == confirm {
 		return m.renderConfirm(g)
 	}
+	if m.stage == guard {
+		return m.renderGuard(g)
+	}
+	if m.stage == preview {
+		return m.renderPreview(g)
+	}
 	lines = append(lines, fmt.Sprintf("[%d/%d] %s  %s  severity: %s", m.cursor+1, len(visible), safe(r.Benchmark), safe(r.ID), strings.ToUpper(safe(r.Severity))))
 	lines = append(lines, fmt.Sprintf("Rule: %s   Release: %s", safe(r.RuleID), safe(r.Release)))
+	indices := m.hostIndices(g)
 	lines = append(lines, "Summary: "+safe(r.Title), m.separator(), fmt.Sprintf("Affected checklists   %d selected of %d   (Tab focus, Space select)", m.selectedCount(), len(g.matches)))
 	size := m.pageSize()
 	start := (m.host / size) * size
-	end := min(len(g.matches), start+size)
+	end := min(len(indices), start+size)
 	for i := start; i < end; i++ {
-		ref := g.matches[i]
+		ref := g.matches[indices[i]]
 		row := m.files[ref.file].Rules[ref.rule]
 		selected := " "
 		if ref.selected {
@@ -111,19 +125,25 @@ func (m model) render() string {
 		host := safe(filepath.Base(filepath.Dir(m.files[ref.file].Path)))
 		lines = append(lines, fmt.Sprintf("%s [%s] %-20s  %-18s  %s", focus, selected, clip(host, 20), statusBadge(row.Status), safe(m.files[ref.file].Path)))
 	}
-	lines = append(lines, fmt.Sprintf("Hosts %d-%d of %d   PgUp/PgDn pages   Home/End jumps", start+1, end, len(g.matches)), m.separator())
-	focused := g.matches[m.host]
+	lines = append(lines, fmt.Sprintf("Hosts %d-%d of %d   PgUp/PgDn pages   Home/End jumps", start+1, end, len(indices)), m.separator())
+	focused := g.matches[indices[m.host]]
 	current := m.files[focused.file].Rules[focused.rule]
 	lines = append(lines, "Focused: "+safe(m.files[focused.file].Path), "Status: "+statusBadge(current.Status)+"   Comment: "+safe(current.Comment), "Finding: "+safe(current.Findings), m.separator())
 	switch m.stage {
 	case browse:
-		lines = append(lines, "j/k controls  Tab host  PgUp/PgDn hosts  Space select  v details  e edit  f filter  / search  q quit")
+		lines = append(lines, "j/k controls  Tab host  PgUp/PgDn hosts  Space select  m matching  A visible  c clear  v details  e edit  f/F filters  /,h search  q quit")
 	case search:
 		lines = append(lines, "Search: "+safe(m.query)+"_   Enter accept  Esc cancel")
+	case hostSearch:
+		lines = append(lines, "Host search: "+safe(m.hostQuery)+"_  Enter accept  Esc cancel")
 	case choose:
 		lines = append(lines, "State: 1 Open   2 Not a Finding   3 Not Applicable   4 Not Reviewed   Esc cancel")
 	case comment:
-		lines = append(lines, "New state: "+statusBadge(m.target)+"   Comment: "+safe(m.note)+"_   Enter review  Esc cancel")
+		lines = append(lines, "New state: "+statusBadge(m.target)+"   Comment (Ctrl+J newline, Enter review, Esc cancel):")
+		wrapped := wrapLines(m.note, max(1, m.width-7))
+		start := max(0, len(wrapped)-3)
+		lines = append(lines, wrapped[start:]...)
+		lines = append(lines, "_")
 	}
 	if m.message != "" {
 		lines = append(lines, "Notice: "+safe(m.message))
@@ -138,18 +158,54 @@ func (m model) renderConfirm(g group) string {
 		start = (min(m.host, len(selected)-1) / size) * size
 	}
 	end := min(len(selected), start+size)
-	lines := []string{"CHECKMATE   Review changes", fmt.Sprintf("%s  %s   severity: %s", safe(g.sample.Benchmark), safe(g.sample.ID), strings.ToUpper(safe(g.sample.Severity))), m.separator(), "New state: " + statusBadge(m.target), "Comment: " + safe(m.note), m.separator(), fmt.Sprintf("Affected checklists   %d selected of %d", len(selected), len(g.matches))}
+	counts := map[string]int{}
+	for _, ref := range selected {
+		counts[m.files[ref.file].Rules[ref.rule].Status]++
+	}
+	lines := []string{"CHECKMATE   Review changes", fmt.Sprintf("%s  %s   severity: %s", safe(g.sample.Benchmark), safe(g.sample.ID), strings.ToUpper(safe(g.sample.Severity))), m.separator(), "New state: " + statusBadge(m.target), "New comment: " + safe(strings.ReplaceAll(m.note, "\n", " ↵ ")), fmt.Sprintf("Selected old states: Open %d · Not a Finding %d · Not Applicable %d · Not Reviewed %d", counts["open"], counts["not_a_finding"], counts["not_applicable"], counts["not_reviewed"]), m.separator(), fmt.Sprintf("Affected checklists   %d selected of %d", len(selected), len(g.matches))}
 	for i := start; i < end; i++ {
 		ref := selected[i]
 		path := m.files[ref.file].Path
-		lines = append(lines, fmt.Sprintf("UPDATE %-20s %s", safe(filepath.Base(filepath.Dir(path))), safe(path)))
+		old := m.files[ref.file].Rules[ref.rule]
+		focus := " "
+		if i == m.host {
+			focus = ">"
+		}
+		lines = append(lines, fmt.Sprintf("%s UPDATE %-15s %s -> %s", focus, safe(filepath.Base(filepath.Dir(path))), statusBadge(old.Status), statusBadge(m.target)))
+		lines = append(lines, fmt.Sprintf("  Comment: %s -> %s", safe(old.Comment), safe(strings.ReplaceAll(m.note, "\n", " ↵ "))))
 	}
 	if len(selected) > 0 {
 		lines = append(lines, fmt.Sprintf("Selected hosts %d-%d of %d   PgUp/PgDn pages   Home/End jumps", start+1, end, len(selected)))
 	} else {
 		lines = append(lines, "No hosts selected; no files will change.")
 	}
-	lines = append(lines, m.separator(), "Existing CKLBs replaced; provenance sidecars remain stale.", "Y/Enter apply   N/Esc cancel")
+	lines = append(lines, m.separator(), "Existing CKLBs replaced; provenance sidecars remain stale.", "PgUp/PgDn hosts   v full per-host preview   Y/Enter apply   N/Esc cancel")
+	return m.frame(lines)
+}
+func (m model) renderPreview(g group) string {
+	selected := m.selectedRefs()
+	if len(selected) == 0 {
+		return m.renderConfirm(g)
+	}
+	ref := selected[min(m.host, len(selected)-1)]
+	old := m.files[ref.file].Rules[ref.rule]
+	content := []string{"Host: " + safe(m.files[ref.file].Path), "Old state: " + statusBadge(old.Status), "Old comment:"}
+	content = append(content, wrapLines(old.Comment, max(1, m.width-6))...)
+	content = append(content, "", "New state: "+statusBadge(m.target), "New comment:")
+	content = append(content, wrapLines(m.note, max(1, m.width-6))...)
+	size := max(1, m.height-10)
+	start := min(m.detailOffset, max(0, len(content)-1))
+	end := min(len(content), start+size)
+	lines := []string{fmt.Sprintf("CHECKMATE   Full change preview  host %d/%d", min(m.host, len(selected)-1)+1, len(selected)), m.separator()}
+	lines = append(lines, content[start:end]...)
+	lines = append(lines, m.separator(), fmt.Sprintf("Lines %d-%d of %d   j/k scroll   PgUp/PgDn pages   Tab next host   Esc return", start+1, end, len(content)))
+	return m.frame(lines)
+}
+func (m model) renderGuard(g group) string {
+	lines := []string{"CHECKMATE   Additional authorization", m.separator(), fmt.Sprintf("%s  %s  %d selected hosts", safe(g.sample.Benchmark), safe(g.sample.ID), m.selectedCount()), "Bulk Open -> Not a Finding changes require individual evidence review.", "No files have been written yet.", m.separator(), "Type OVERRIDE and press Enter to apply:", safe(m.ack) + "_", "Esc: return to change preview"}
+	if m.message != "" {
+		lines = append(lines, "Notice: "+safe(m.message))
+	}
 	return m.frame(lines)
 }
 func wrapLines(s string, width int) []string {
@@ -169,7 +225,7 @@ func wrapLines(s string, width int) []string {
 	return out
 }
 func (m model) renderDetails(g group) string {
-	ref := g.matches[m.host]
+	ref := g.matches[m.hostIndices(g)[m.host]]
 	row := m.files[ref.file].Rules[ref.rule]
 	content := append([]string{"Full current comment:"}, wrapLines(row.Comment, max(1, m.width-6))...)
 	content = append(content, "", "Full finding details:")

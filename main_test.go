@@ -17,7 +17,7 @@ func sample(t *testing.T, dir, host, status string) string {
 		t.Fatal(err)
 	}
 	p := filepath.Join(d, "scan.cklb")
-	b := `{"stigs":[{"stig_id":"Cisco_IOS_STIG","release_info":"V1R2","rules":[{"group_id":"V-42","rule_id":"SV-42r1_rule","rule_title":"Configure login policy","severity":"high","status":"` + status + `","comments":"old","finding_details":"host data"}]}]}`
+	b := `{"title":"synthetic.cklb","id":"123e4567-e89b-12d3-a456-426614174000","cklb_version":"1.0","stigs":[{"stig_name":"Cisco IOS STIG","display_name":"Cisco IOS","stig_id":"Cisco_IOS_STIG","release_info":"V1R2","uuid":"123e4567-e89b-12d3-a456-426614174001","size":1,"rules":[{"group_id":"V-42","rule_id":"SV-42r1_rule","rule_title":"Configure login policy","severity":"high","status":"` + status + `","comments":"old","finding_details":"host data"}]}]}`
 	if err := os.WriteFile(p, []byte(b), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestTUICommentAcceptsSpaces(t *testing.T) {
 	root := t.TempDir()
 	sample(t, root, "r1", "open")
 	files, _ := checklist.Discover(root)
-	m := key(key(newModel(files), "e"), "2")
+	m := key(key(key(newModel(files), "space"), "e"), "2")
 	for _, k := range []string{"a", "space", "b"} {
 		m = key(m, k)
 	}
@@ -85,7 +85,8 @@ func TestTUIEditsOnlySelectedHostAfterConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := newModel(files)
-	m = key(m, "space") // unselect first host
+	m = key(m, "tab")   // focus second host
+	m = key(m, "space") // select only second host
 	m = key(m, "e")
 	m = key(m, "n")     // edit, choose Not a Finding
 	m = key(m, "enter") // comment field

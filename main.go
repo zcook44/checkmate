@@ -20,8 +20,11 @@ const (
 	choose
 	comment
 	confirm
+	guard
 	search
+	hostSearch
 	details
+	preview
 )
 
 type match struct {
@@ -35,16 +38,18 @@ type group struct {
 	matches []match
 }
 type model struct {
-	files                        []checklist.File
-	groups                       []group
-	cursor, host, filter         int
-	height, detailOffset         int
-	stage                        stage
-	target, note, query, message string
-	width                        int
+	files                                        []checklist.File
+	groups                                       []group
+	cursor, host, filter                         int
+	severityFilter                               int
+	height, detailOffset                         int
+	stage                                        stage
+	target, note, query, hostQuery, message, ack string
+	width                                        int
 }
 
 var filters = []string{"all", "not_reviewed", "open", "not_a_finding", "not_applicable"}
+var severities = []string{"all", "high", "medium", "low"}
 var choices = []string{"open", "not_a_finding", "not_applicable", "not_reviewed"}
 
 func newModel(files []checklist.File) model {
@@ -59,7 +64,7 @@ func newModel(files []checklist.File) model {
 				indexes[k] = idx
 				m.groups = append(m.groups, group{key: k, sample: r})
 			}
-			m.groups[idx].matches = append(m.groups[idx].matches, match{file: fi, rule: ri, selected: true})
+			m.groups[idx].matches = append(m.groups[idx].matches, match{file: fi, rule: ri})
 		}
 	}
 	sort.Slice(m.groups, func(i, j int) bool {
@@ -88,9 +93,17 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) visible() []int {
 	out := []int{}
 	for i, g := range m.groups {
+		if m.severityFilter != 0 && g.sample.Severity != severities[m.severityFilter] {
+			continue
+		}
+		indices := m.hostIndices(g)
+		if len(indices) == 0 {
+			continue
+		}
 		matchFilter := m.filter == 0
 		if !matchFilter {
-			for _, ref := range g.matches {
+			for _, i := range indices {
+				ref := g.matches[i]
 				if m.files[ref.file].Rules[ref.rule].Status == filters[m.filter] {
 					matchFilter = true
 					break
@@ -107,6 +120,15 @@ func (m model) visible() []int {
 	}
 	return out
 }
+func (m model) hostIndices(g group) []int {
+	out := []int{}
+	for i, ref := range g.matches {
+		if m.hostQuery == "" || strings.Contains(strings.ToLower(m.files[ref.file].Path), strings.ToLower(m.hostQuery)) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
 func (m *model) clamp() {
 	n := len(m.visible())
 	if n == 0 {
@@ -120,7 +142,7 @@ func (m *model) clamp() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
-	matches := len(m.groups[m.visible()[m.cursor]].matches)
+	matches := len(m.hostIndices(m.groups[m.visible()[m.cursor]]))
 	if m.host >= matches {
 		m.host = 0
 	}
@@ -156,6 +178,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.stage == hostSearch {
+			switch k {
+			case "esc":
+				m.stage = browse
+				return m, nil
+			case "enter":
+				m.stage = browse
+				m.cursor = 0
+				m.host = 0
+				m.clamp()
+				return m, nil
+			case "backspace":
+				m.hostQuery = trimLast(m.hostQuery)
+				return m, nil
+			}
+			if msg.Type == tea.KeySpace {
+				m.hostQuery += " "
+			}
+			if msg.Type == tea.KeyRunes {
+				m.hostQuery += safe(string(msg.Runes))
+			}
+			return m, nil
+		}
 		if m.stage == comment {
 			switch k {
 			case "esc":
@@ -171,6 +216,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "backspace":
 				m.note = trimLast(m.note)
+				return m, nil
+			case "ctrl+j":
+				m.note += "\n"
 				return m, nil
 			}
 			if msg.Type == tea.KeySpace {
@@ -196,12 +244,63 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.stage == confirm {
 			m.moveHost(k, m.selectedCount())
+			if k == "v" && m.selectedCount() > 0 {
+				m.detailOffset = 0
+				m.stage = preview
+				return m, nil
+			}
 			if k == "esc" || k == "n" {
 				m.stage = browse
 				return m, nil
 			}
 			if k == "y" || k == "enter" {
-				m.apply()
+				if m.bulkOpenDowngrade() {
+					m.stage = guard
+					m.ack = ""
+				} else {
+					m.apply()
+				}
+			}
+			return m, nil
+		}
+		if m.stage == guard {
+			switch k {
+			case "esc":
+				m.stage = confirm
+				return m, nil
+			case "enter":
+				if m.ack == "OVERRIDE" {
+					m.apply()
+				} else {
+					m.message = "Type OVERRIDE to authorize this bulk change"
+				}
+				return m, nil
+			case "backspace":
+				m.ack = trimLast(m.ack)
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.ack += safe(string(msg.Runes))
+			}
+			return m, nil
+		}
+		if m.stage == preview {
+			switch k {
+			case "esc", "v":
+				m.stage = confirm
+			case "j", "down":
+				m.detailOffset++
+			case "k", "up":
+				m.detailOffset = max(0, m.detailOffset-1)
+			case "pgdown":
+				m.detailOffset += m.pageSize()
+			case "pgup":
+				m.detailOffset = max(0, m.detailOffset-m.pageSize())
+			case "home":
+				m.detailOffset = 0
+			case "tab":
+				m.host = min(m.selectedCount()-1, m.host+1)
+				m.detailOffset = 0
 			}
 			return m, nil
 		}
@@ -235,33 +334,66 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.host = 0
 		case "tab":
 			if len(visible) > 0 {
-				m.host = (m.host + 1) % len(m.groups[visible[m.cursor]].matches)
+				m.host = (m.host + 1) % len(m.hostIndices(m.groups[visible[m.cursor]]))
 			}
 		case "shift+tab":
 			if len(visible) > 0 {
-				m.host = (m.host + len(m.groups[visible[m.cursor]].matches) - 1) % len(m.groups[visible[m.cursor]].matches)
+				n := len(m.hostIndices(m.groups[visible[m.cursor]]))
+				m.host = (m.host + n - 1) % n
 			}
 		case "pgdown", "pgup", "home", "end":
 			if len(visible) > 0 {
-				m.moveHost(k, len(m.groups[visible[m.cursor]].matches))
+				m.moveHost(k, len(m.hostIndices(m.groups[visible[m.cursor]])))
 			}
 		case "space", " ":
 			if len(visible) > 0 {
 				g := &m.groups[visible[m.cursor]]
-				g.matches[m.host].selected = !g.matches[m.host].selected
+				ref := &g.matches[m.hostIndices(*g)[m.host]]
+				ref.selected = !ref.selected
+			}
+		case "m", "A", "c":
+			if len(visible) > 0 {
+				g := &m.groups[visible[m.cursor]]
+				shown := map[int]bool{}
+				for _, i := range m.hostIndices(*g) {
+					shown[i] = true
+				}
+				for i := range g.matches {
+					ref := &g.matches[i]
+					switch k {
+					case "m":
+						ref.selected = shown[i] && m.filter != 0 && m.files[ref.file].Rules[ref.rule].Status == filters[m.filter]
+					case "A":
+						if shown[i] {
+							ref.selected = true
+						}
+					case "c":
+						ref.selected = false
+					}
+				}
 			}
 		case "f":
 			m.filter = (m.filter + 1) % len(filters)
 			m.cursor = 0
 			m.host = 0
+		case "F":
+			m.severityFilter = (m.severityFilter + 1) % len(severities)
+			m.cursor = 0
+			m.host = 0
 		case "/":
 			m.stage = search
+		case "h":
+			m.stage = hostSearch
 		case "v":
 			if len(visible) > 0 {
 				m.stage = details
 				m.detailOffset = 0
 			}
 		case "e", "enter":
+			if len(visible) > 0 && m.selectedCount() == 0 {
+				m.message = "Select at least one host before editing"
+				break
+			}
 			if len(visible) > 0 {
 				m.stage = choose
 				m.message = ""
@@ -278,6 +410,16 @@ func (m *model) apply() {
 		return
 	}
 	g := &m.groups[visible[m.cursor]]
+	for _, ref := range g.matches {
+		if !ref.selected {
+			continue
+		}
+		if err := checklist.Preflight(m.files[ref.file]); err != nil {
+			m.message = fmt.Sprintf("Preflight failed; no files changed: %v", err)
+			m.stage = browse
+			return
+		}
+	}
 	changed := 0
 	for i := range g.matches {
 		ref := &g.matches[i]
@@ -301,6 +443,18 @@ func (m *model) apply() {
 	}
 	m.message = fmt.Sprintf("Updated %d checklist(s) in place", changed)
 	m.stage = browse
+}
+func (m model) bulkOpenDowngrade() bool {
+	refs := m.selectedRefs()
+	if m.target != "not_a_finding" || len(refs) < 2 {
+		return false
+	}
+	for _, ref := range refs {
+		if m.files[ref.file].Rules[ref.rule].Status == "open" {
+			return true
+		}
+	}
+	return false
 }
 func trimLast(s string) string {
 	r := []rune(s)
@@ -340,9 +494,14 @@ func max(a, b int) int {
 func main() {
 	root := flag.String("root", "", "root directory of CKLB checklists")
 	list := flag.Bool("list", false, "read-only inventory, no TUI")
+	validate := flag.Bool("validate", false, "validate newest CKLB per directory against bundled DISA CKLB 1.0 schema")
 	flag.Parse()
 	if *root == "" {
-		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--list]")
+		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--list | --validate]")
+		os.Exit(2)
+	}
+	if *list && *validate {
+		fmt.Fprintln(os.Stderr, "--list and --validate are mutually exclusive")
 		os.Exit(2)
 	}
 	files, err := checklist.Discover(*root)
@@ -355,6 +514,26 @@ func main() {
 		for _, g := range m.groups {
 			fmt.Printf("%s  %s  %s  %s  (%d checklists)\n", g.sample.Benchmark, g.sample.ID, g.sample.Severity, clip(safe(g.sample.Title), 90), len(g.matches))
 		}
+		return
+	}
+	if *validate {
+		bad := 0
+		for _, f := range files {
+			data, err := os.ReadFile(f.Path)
+			if err == nil {
+				err = checklist.ValidateSchema(data)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "INVALID %s: %v\n", f.Path, err)
+				bad++
+			} else {
+				fmt.Printf("VALID %s\n", f.Path)
+			}
+		}
+		if bad > 0 {
+			os.Exit(1)
+		}
+		fmt.Printf("Validated %d checklist(s) against DISA CKLB 1.0\n", len(files))
 		return
 	}
 	if _, err = tea.NewProgram(newModel(files), tea.WithAltScreen()).Run(); err != nil {

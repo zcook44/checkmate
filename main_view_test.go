@@ -36,7 +36,7 @@ func TestHostListPagesWithoutOverflowAndSelectionPersists(t *testing.T) {
 	if !strings.Contains(first, "host-00") || strings.Contains(first, "host-54") {
 		t.Fatal("host viewport not bounded")
 	}
-	m = key(m, "space") // deselect host 00
+	m = key(m, "space") // select host 00
 	m = viewKey(m, tea.KeyPgDown)
 	if m.host == 0 || !strings.Contains(m.View(), fmt.Sprintf("host-%02d", m.host)) {
 		t.Fatalf("page did not advance: %d", m.host)
@@ -46,12 +46,13 @@ func TestHostListPagesWithoutOverflowAndSelectionPersists(t *testing.T) {
 		t.Fatalf("last host unreachable: %d", m.host)
 	}
 	m = viewKey(m, tea.KeyHome)
-	if m.groups[0].matches[0].selected || !strings.Contains(m.View(), "host-00") {
+	if !m.groups[0].matches[0].selected || !strings.Contains(m.View(), "host-00") {
 		t.Fatal("selection was lost across pages")
 	}
 }
 func TestConfirmationPagesSelectedHosts(t *testing.T) {
 	m := manyHosts(t, 55)
+	m = key(m, "A")
 	m = key(m, "e")
 	m = key(m, "2")
 	m = key(m, "x")

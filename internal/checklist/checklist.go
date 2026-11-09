@@ -95,6 +95,35 @@ func Load(path string) (File, error) {
 	return parse(path, data)
 }
 
+// Preflight verifies the selected bytes and the ability to stage a replacement.
+// Edit repeats the hash check immediately before writing.
+func Preflight(f File) error {
+	if _, err := regular(f.Path); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(f.Path)
+	if err != nil {
+		return err
+	}
+	if sha256.Sum256(data) != f.Digest {
+		return fmt.Errorf("%s: checklist changed since load", f.Path)
+	}
+	if err := ValidateSchema(data); err != nil {
+		return fmt.Errorf("%s: %w", f.Path, err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(f.Path), ".checkmate-preflight-*")
+	if err != nil {
+		return fmt.Errorf("%s: cannot stage replacement: %w", f.Path, err)
+	}
+	name := tmp.Name()
+	closeErr := tmp.Close()
+	removeErr := os.Remove(name)
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
+}
+
 // Discover selects the most recently modified CKLB in each directory; ties fail closed.
 func Discover(root string) ([]File, error) {
 	info, err := os.Lstat(root)
