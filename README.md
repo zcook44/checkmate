@@ -6,12 +6,12 @@ Checkmate edits checklist answers. It does **not** run scans, assess a host, app
 
 ## Run locally
 
-You need Go to build it. The resulting binary manages perfectly well on its own:
+You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build lives in the ignored `release/` directory:
 
 ```sh
-GOPROXY=off GOSUMDB=off go build -mod=vendor -o checkmate .
-./checkmate --root /private/checklists --list   # read-only inventory
-./checkmate --root /private/checklists          # interactive editor
+./scripts/package.sh 0.1.0
+./release/checkmate --root /private/checklists --list   # read-only inventory
+./release/checkmate --root /private/checklists          # interactive editor
 ```
 
 Point `--root` at a directory. Checkmate walks it and selects the most recently modified `.cklb` **in each directory**. A tie for newest, invalid CKLB data, or a symlink in the tree stops the run. Guessing which assessment you meant would be a bold feature for a compliance tool. Other files are ignored.
@@ -40,10 +40,10 @@ From the source tree on a build host with the vendored dependencies:
 
 ```sh
 ./scripts/package.sh 0.1.0
-(cd dist && sha256sum -c SHA256SUMS)
+(cd release && sha256sum -c SHA256SUMS)
 ```
 
-Transfer the appropriate `dist/checkmate_0.1.0_linux_<arch>.tar.gz` and `dist/SHA256SUMS` to the disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
+The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.1.0_linux_<arch>.tar.gz` and `release/SHA256SUMS` to the disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing

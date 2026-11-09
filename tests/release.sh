@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+version="${1:-0.1.0}"
+./scripts/package.sh "$version"
+test -x release/checkmate
+test -f "release/checkmate_${version}_linux_amd64.tar.gz"
+test -f "release/checkmate_${version}_linux_arm64.tar.gz"
+(cd release && sha256sum -c SHA256SUMS)
+git check-ignore -q release/checkmate
+git check-ignore -q "release/checkmate_${version}_linux_amd64.tar.gz"
+cmp README.md <(tar -xOzf "release/checkmate_${version}_linux_amd64.tar.gz" "checkmate_${version}_linux_amd64/README.md")
+fixture=$(mktemp -d "${TMPDIR:-/home/zrc/.hermes/cache/scratch}/checkmate-release-test.XXXXXX")
+trap 'rm -r "$fixture"' EXIT
+printf '%s\n' '{"stigs":[{"stig_id":"Cisco_IOS_STIG","release_info":"V1R2","rules":[{"group_id":"V-42","rule_id":"SV-42r1_rule","rule_title":"Login policy","severity":"high","status":"open","comments":"","finding_details":""}]}]}' > "$fixture/sample.cklb"
+release/checkmate --root "$fixture" --list | grep -q 'Cisco_IOS_STIG  V-42'
+echo "Release directory verified"

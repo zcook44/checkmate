@@ -1,4 +1,5 @@
 dist/
+release/
 checkmate
 *.cklb
 *.cklb.provenance.json

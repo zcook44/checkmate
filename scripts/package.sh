@@ -4,16 +4,18 @@ cd "$(dirname "$0")/.."
 version="${1:?usage: scripts/package.sh VERSION}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'version must be X.Y.Z' >&2; exit 2; }
 export GOPROXY=off GOSUMDB=off CGO_ENABLED=0
-mkdir -p dist
+mkdir -p release
 go test -mod=vendor ./...
-: > dist/SHA256SUMS
+: > release/SHA256SUMS
 for arch in amd64 arm64; do
   name="checkmate_${version}_linux_${arch}"
-  mkdir -p "dist/$name"
-  GOOS=linux GOARCH="$arch" go build -mod=vendor -trimpath -ldflags='-s -w' -o "dist/$name/checkmate" .
-  cp README.md "dist/$name/README.md"
-  tar -C dist -czf "dist/$name.tar.gz" "$name"
-  (cd dist && sha256sum "$name.tar.gz") >> dist/SHA256SUMS
-  rm -r "dist/$name"
+  mkdir -p "release/$name"
+  GOOS=linux GOARCH="$arch" go build -mod=vendor -trimpath -ldflags='-s -w' -o "release/$name/checkmate" .
+  cp README.md "release/$name/README.md"
+  if [[ "$arch" == amd64 ]]; then cp "release/$name/checkmate" release/checkmate; fi
+  tar -C release -czf "release/$name.tar.gz" "$name"
+  (cd release && sha256sum "$name.tar.gz") >> release/SHA256SUMS
+  rm -r "release/$name"
 done
-(cd dist && sha256sum -c SHA256SUMS)
+(cd release && sha256sum checkmate) >> release/SHA256SUMS
+(cd release && sha256sum -c SHA256SUMS)
