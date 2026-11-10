@@ -72,6 +72,35 @@ sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 # Compare with the published JSON hash above; Checkmate does not do that comparison for you.
 ```
 
+## Prepare a private library and scan results
+
+These helper scripts are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install DISA's separate CKLB JSON schema.
+
+To extract a new library from one official RHEL STIG ZIP, or a directory containing ZIPs **directly** (not recursively), choose a destination that does not exist. The script streams only `U_RHEL_N_STIG_VxRy_Manual-xccdf.xml` entries to a flat, owner-private directory. It does not unpack PDFs, scripts, or arbitrary archive paths, does not overwrite a library, and fails on duplicate benchmark filenames. The destination's parent must already exist, be owned by you, and not be group/world writable. Source ZIPs should be obtained and verified under your organization's DISA distribution procedures; this script does not authenticate an archive or validate the XCCDF's identity.
+
+```sh
+# Example: SOURCE contains U_RHEL_7_...STIG.zip, U_RHEL_9_...STIG.zip, etc.
+./scripts/unpack-stig-library.sh \
+  /scratch/src/admin/stig/stig_library_source_archives \
+  "$HOME/private/stig/stig_library"
+# Or use an individual ZIP as the first argument.
+# Parent directory: owned by caller, not group/world writable.
+# New library directory: 0700; extracted XML files: 0600.
+```
+
+Only versions actually present in the source are extracted; if a RHEL release is missing, the converter cannot select its benchmark. Optional `RHEL_N_STIG.tailoring.yaml` policies are **not** in the ZIP and must be placed at the library root separately, as owner-owned regular files with mode `0600`. The converter also checks benchmark identity/release metadata when it uses one.
+
+For an existing, owner-controlled OpenSCAP results tree, inspect its proposed permission changes first. `--apply` changes **all** directories beneath the requested root to `0700` and **all** regular files to `0600`, including unrelated files in that tree. It does not change contents or ownership, and aborts before changing modes if it encounters a symlink, multiply-linked regular file, special file, foreign-owned entry, unreadable subtree, or no recognizable XCCDF result. Use the narrow results root you intend, not a parent that also contains the library. Do not run it while another process is modifying the tree; chmod across multiple files is not atomic, so a runtime failure can leave earlier entries changed.
+
+```sh
+./scripts/fix-oscap-permissions.sh /path/to/oscap-results
+./scripts/fix-oscap-permissions.sh --apply /path/to/oscap-results
+# Then use: stig-evidence batch-cklb --input-root /path/to/oscap-results \
+#   --library-root "$HOME/private/stig/stig_library" --dry-run
+```
+
+The path must be canonical and absolute (no symlink components); the script refuses `/` and your home directory. A recognized result ends in `.results.xml`, `.results.xccdf.xml`, or `_XCCDF_Results.xml`. Permission repair does not make an incomplete or misnamed scan bundle compatible: the converter still requires its expected same-prefix companions and valid scan content. The scripts use Bash, GNU coreutils/find, and `unzip` (for extraction); test them with `bash tests/permissions-scripts.sh` on synthetic fixtures before operating on valuable evidence.
+
 ## Drive the terminal
 
 - `j/k` or arrows: move between controls. `Tab`: focus a host. `Space`: include or exclude that host from the edit. Nothing starts selected; Checkmate has resisted the temptation to decide for your entire fleet.
