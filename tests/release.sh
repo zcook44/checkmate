@@ -9,7 +9,14 @@ test -f "release/checkmate_${version}_linux_arm64.tar.gz"
 (cd release && sha256sum -c SHA256SUMS)
 git check-ignore -q release/checkmate
 git check-ignore -q "release/checkmate_${version}_linux_amd64.tar.gz"
-cmp README.md <(tar -xOzf "release/checkmate_${version}_linux_amd64.tar.gz" "checkmate_${version}_linux_amd64/README.md")
+for arch in amd64 arm64; do
+  archive="release/checkmate_${version}_linux_${arch}.tar.gz"
+  prefix="checkmate_${version}_linux_${arch}"
+  cmp README.md <(tar -xOzf "$archive" "$prefix/README.md")
+  cmp docs/OFFLINE-EXAMPLES.md <(tar -xOzf "$archive" "$prefix/docs/OFFLINE-EXAMPLES.md")
+  diff -u <(printf '%s\n' "$prefix/" "$prefix/checkmate" "$prefix/README.md" "$prefix/docs/" "$prefix/docs/OFFLINE-EXAMPLES.md" | sort) \
+    <(tar -tzf "$archive" | sort)
+done
 fixture=$(mktemp -d "${TMPDIR:-/home/zrc/.hermes/cache/scratch}/checkmate-release-test.XXXXXX")
 trap 'rm -r "$fixture"' EXIT
 mkdir -m 700 "$fixture/checklists"

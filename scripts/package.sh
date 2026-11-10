@@ -12,6 +12,8 @@ for arch in amd64 arm64; do
   mkdir -p "release/$name"
   GOOS=linux GOARCH="$arch" go build -mod=vendor -trimpath -ldflags='-s -w' -o "release/$name/checkmate" .
   cp README.md "release/$name/README.md"
+  mkdir -p "release/$name/docs"
+  cp docs/OFFLINE-EXAMPLES.md "release/$name/docs/OFFLINE-EXAMPLES.md"
   if [[ "$arch" == amd64 ]]; then
     direct_tmp=$(mktemp release/.checkmate.XXXXXX)
     cp "release/$name/checkmate" "$direct_tmp"
