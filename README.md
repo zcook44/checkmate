@@ -10,12 +10,13 @@ Checkmate edits checklist answers. It does **not** run scans, assess a host, app
 flowchart TD
     subgraph upstream["Upstream: separate tools, not Checkmate"]
         scan["Ansible runs OpenSCAP on a host"] --> evidence["Private same-run XCCDF + HTML + ARF"]
-        evidence --> converter["burden-of-proof Go converter"]
-        benchmark["Official DISA manual XCCDF + per-OS policy"] --> converter
+        evidence --> converter["burden-of-proof converter: pair scan bundle, reconcile V/SV IDs"]
+        benchmark["Official DISA manual XCCDF + optional per-OS policy"] --> converter
         converter --> generated["CKLB review candidate + provenance sidecar"]
     end
     generated --> root["Owner-private CKLB --root"]
     external["Other vendor CKLBs"] --> root
+    root -.-> inventory["Read-only --list or --validate --schema"]
     subgraph editor["Checkmate: deliberate in-place review"]
         root --> discover["Newest CKLB per directory; fail on ties or symlinks"]
         discover --> group["Group by benchmark, release, group ID and rule ID"]
@@ -30,7 +31,7 @@ flowchart TD
     edit -.-> stale["Existing provenance sidecar hash becomes stale"]
 ```
 
-Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For private copied RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md); those inputs are Git-ignored and not in the generic release.
+Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For private copied RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md); that guide is packaged, but its Git-ignored inputs are not.
 
 ## Run locally
 
@@ -169,7 +170,9 @@ tar -xzf checkmate_0.4.0_linux_amd64.tar.gz
 install -m 755 checkmate_0.4.0_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
 ```
 
-The archive contains the binary and this README, **not** DISA's schema or private checklist/library files. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
+Each architecture archive contains the binary, this README, and [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), with the same relative link inside the archive. It does **not** contain the DISA schema, private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
+
+For a **read-only deployment check**, use `scripts/preflight-offline.sh` from the separate `burden-of-proof` checkout, not from this Checkmate archive. Supply its executable converter, private scan and benchmark roots, and optionally Checkmate plus a completed-checklist root. It checks private tree ownership/modes and any root `SHA256SUMS`, runs converter `batch-cklb --dry-run`, and runs Checkmate `--list` (plus `--validate` only if you supply a schema). It creates and removes a private temporary workspace but does not scan hosts, convert evidence, or edit checklists. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md#read-only-deployment-preflight) for the exact invocation. A library's example tailoring YAML can be selected by the converter; preflight warns about it, but a dry run is **not** approval to use it as site policy.
 
 ## Development
 
