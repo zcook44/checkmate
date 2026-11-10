@@ -177,4 +177,4 @@ The archive contains the binary and this README, **not** DISA's schema or privat
 GOPROXY=off GOSUMDB=off go test -mod=vendor ./...
 ```
 
-Keep source scans and real CKLB files outside this repository. Do not commit generated checklists, scan output, or host findings. The repository has enough material to review without donating your infrastructure data to it.
+Keep original source scans and assessments outside this repository, and keep private example **copies** under the ignored `examples/` and `benchmarks/` directories. Do not commit generated checklists, scan output, official benchmarks, or host findings. The repository has enough material to review without donating your infrastructure data to it.
