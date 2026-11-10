@@ -1,5 +1,8 @@
 dist/
 release/
+examples/
+benchmarks/
+__pycache__/
 checkmate
 *.cklb
 *.cklb.provenance.json
