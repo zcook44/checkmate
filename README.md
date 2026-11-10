@@ -38,7 +38,7 @@ Start with `--list` to inspect the discovered files; `--validate --schema PATH` 
 You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build lives in the ignored `release/` directory:
 
 ```sh
-./scripts/package.sh 0.4.0
+./scripts/package.sh 0.4.1
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --list
 ./release/checkmate --root "$HOME/private/stig/completed_ckl"                     # editor; no schema check
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; validate selected files before writing
@@ -157,17 +157,17 @@ A multi-file edit is **not transactionally atomic**. If a later file fails, earl
 From the source tree on a build host with the vendored dependencies:
 
 ```sh
-./scripts/package.sh 0.4.0
+./scripts/package.sh 0.4.1
 (cd release && sha256sum -c SHA256SUMS)
 ```
 
-The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.4.0_linux_<arch>.tar.gz` and `release/SHA256SUMS` to an authorized disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
+The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.4.1_linux_<arch>.tar.gz` and `release/SHA256SUMS` to an authorized disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
 mkdir -p "$HOME/.local/bin"
-tar -xzf checkmate_0.4.0_linux_amd64.tar.gz
-install -m 755 checkmate_0.4.0_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
+tar -xzf checkmate_0.4.1_linux_amd64.tar.gz
+install -m 755 checkmate_0.4.1_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
 ```
 
 Each architecture archive contains the binary, this README, [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), the DISA JSON schema and its [provenance notice](schemas/PROVENANCE.md), with the same relative links inside the archive. It does **not** contain private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.

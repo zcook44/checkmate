@@ -24,7 +24,7 @@ The `--output` argument can instead name another existing, owned, canonical dire
 ## Exercise after an offline build
 
 ```sh
-GOPROXY=off GOSUMDB=off ./scripts/package.sh 0.4.0
+GOPROXY=off GOSUMDB=off ./scripts/package.sh 0.4.1
 ./release/checkmate --root "$PWD/examples" --list
 # Interactive editor (in-place edits to the PRIVATE COPIES, not saved source):
 ./release/checkmate --root "$PWD/examples"
