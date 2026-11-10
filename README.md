@@ -48,8 +48,9 @@ The account running Checkmate must be able to traverse and read every directory/
 ```sh
 umask 077
 install -d -m 700 "$HOME/private/stig" "$HOME/private/stig/schema" \
-  "$HOME/private/stig/stig_library" "$HOME/private/stig/completed_ckl" \
+  "$HOME/private/stig/completed_ckl" \
   "$HOME/private/stig/completed_ckl/rhel9-node1"
+# Leave stig_library absent if you intend to create it with the extractor below.
 install -m 600 /secure/incoming/assessment.cklb \
   "$HOME/private/stig/completed_ckl/rhel9-node1/assessment.cklb"
 ```
@@ -74,7 +75,7 @@ sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 
 ## Prepare a private library and scan results
 
-These helper scripts are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install DISA's separate CKLB JSON schema.
+These helper scripts are in the **source repository**, not the binary release archive. They are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install DISA's separate CKLB JSON schema.
 
 To extract a new library from one official RHEL STIG ZIP, or a directory containing ZIPs **directly** (not recursively), choose a destination that does not exist. The script streams only `U_RHEL_N_STIG_VxRy_Manual-xccdf.xml` entries to a flat, owner-private directory. It does not unpack PDFs, scripts, or arbitrary archive paths, does not overwrite a library, and fails on duplicate benchmark filenames. The destination's parent must already exist, be owned by you, and not be group/world writable. Source ZIPs should be obtained and verified under your organization's DISA distribution procedures; this script does not authenticate an archive or validate the XCCDF's identity.
 
