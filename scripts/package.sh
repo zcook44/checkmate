@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 version="${1:?usage: scripts/package.sh VERSION}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'version must be X.Y.Z' >&2; exit 2; }
 export GOPROXY=off GOSUMDB=off CGO_ENABLED=0
+printf '%s  %s\n' '8b88205de07662006e1660b1decad677d344828d6687b1dd26bca15105b7bb37' schemas/SV3_CKLB_1_0_JSON_SCHEMA.json | sha256sum -c -
 mkdir -p release
 go test -mod=vendor ./...
 : > release/SHA256SUMS
@@ -14,6 +15,8 @@ for arch in amd64 arm64; do
   cp README.md "release/$name/README.md"
   mkdir -p "release/$name/docs"
   cp docs/OFFLINE-EXAMPLES.md "release/$name/docs/OFFLINE-EXAMPLES.md"
+  mkdir -p "release/$name/schemas"
+  cp schemas/SV3_CKLB_1_0_JSON_SCHEMA.json schemas/PROVENANCE.md "release/$name/schemas/"
   if [[ "$arch" == amd64 ]]; then
     direct_tmp=$(mktemp release/.checkmate.XXXXXX)
     cp "release/$name/checkmate" "$direct_tmp"

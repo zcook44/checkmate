@@ -23,7 +23,7 @@ flowchart TD
         group --> choose["Filter, inspect evidence, select hosts explicitly"]
         choose --> preview["Choose status + comment; preview each old to new answer"]
         preview --> guard["Preflight selected files: unchanged bytes and writable staging"]
-        schema["Optional operator-supplied CKLB schema"] -.->|Only with --schema| guard
+        schema["Bundled DISA CKLB schema; opt-in --schema"] -.->|Only with --schema| guard
         guard --> confirm["Confirm; bulk Open to Not a Finding also requires OVERRIDE"]
         confirm --> edit["Replace selected CKLBs in place; report partial failures"]
     end
@@ -41,8 +41,8 @@ You need Go to build it. The resulting binary, sensibly, does not need Go to sup
 ./scripts/package.sh 0.4.0
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --list
 ./release/checkmate --root "$HOME/private/stig/completed_ckl"                     # editor; no schema check
-./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; schema check on selected files before writing
-./release/checkmate --root "$HOME/private/stig/completed_ckl" --validate --schema "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"  # read-only schema check
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; validate selected files before writing
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --validate --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # read-only schema check
 ```
 
 `--schema` is **opt-in**. Without it, Checkmate still requires parseable CKLB JSON, STIG/rule data, IDs, and a supported status, but does **not** run full JSON Schema validation. `--validate` requires `--schema` and checks every selected newest checklist without entering the TUI; `--list` is an inventory, not schema validation, and cannot be combined with either flag. With `--schema` in editor mode, every **selected file** is schema-checked during batch preflight before any write. The tool does not silently consult a default schema.
@@ -53,14 +53,14 @@ Controls are grouped by benchmark ID, release text, group ID, and rule ID. Match
 
 ## Inputs, layout, and permissions
 
-Only the completed `.cklb` tree is required by Checkmate. The optional schema is supplied separately. `stig_library` is **not a Checkmate input**: it belongs to the scan-to-checklist converter and may contain private DISA XCCDF benchmarks and per-OS tailoring YAML. Do not pass it as `--root`, and do not bundle its contents with Checkmate. Checkmate does not read XML, YAML, HTML, ARF, or provenance sidecars.
+Only the completed `.cklb` tree is required by Checkmate. The optional DISA CKLB schema is bundled at `schemas/SV3_CKLB_1_0_JSON_SCHEMA.json` but must still be supplied explicitly with `--schema`. `stig_library` is **not a Checkmate input**: it belongs to the scan-to-checklist converter and may contain private DISA XCCDF benchmarks and per-OS tailoring YAML. Do not pass it as `--root`, and do not bundle its contents with Checkmate. Checkmate does not read XML, YAML, HTML, ARF, or provenance sidecars.
 
 Example owner-private layout (mode recommendations shown; Checkmate does not change directory permissions):
 
 ```text
 $HOME/private/stig/                                   0700  owner directory
-├── schema/                                           0700  optional, operator supplied
-│   └── SV3_CKLB_1_0_JSON_SCHEMA.json                 0600  extracted JSON, not the ZIP
+├── schema/                                           0700  optional installed copy
+│   └── SV3_CKLB_1_0_JSON_SCHEMA.json                 0600  bundled JSON, not the ZIP
 ├── stig_library/                                     0700  converter only; optional here
 │   ├── U_RHEL_9_STIG_V2R10_Manual-xccdf.xml          0600  example benchmark
 │   └── RHEL_9_STIG.tailoring.yaml                    0600  example policy
@@ -88,15 +88,15 @@ For an existing private tree, one verified example is `/scratch/src/admin/stig/c
 
 ### Optional schema requirements
 
-- Obtain DISA's [STIG Viewer 3 CKLB 1.0 schema ZIP](https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/SV3_CKLB_1_0_JSON_SCHEMA.zip) separately and extract `SV3_CKLB_1_0_JSON_SCHEMA.json`. The ZIP itself is not accepted. The JSON file published 2024-01-10 has SHA-256 `8b88205de07662006e1660b1decad677d344828d6687b1dd26bca15105b7bb37`; compare your extracted file's hash before treating it as the DISA schema.
+- The repository and both architecture archives include the unmodified JSON extracted from DISA's [STIG Viewer 3 CKLB 1.0 schema ZIP](https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/SV3_CKLB_1_0_JSON_SCHEMA.zip). SHA-256: `8b88205de07662006e1660b1decad677d344828d6687b1dd26bca15105b7bb37`. See [schema provenance and licensing caveat](schemas/PROVENANCE.md). The ZIP itself is not accepted by `--schema`.
 - `--schema` must name a **readable local regular `.json` file**, not a symlink. It must declare `$schema` as `https://json-schema.org/draft/2019-09/schema`. Internal references work; external file or network references are not loaded. The file's parent directories must be traversable. Owner-controlled `0700` directories and `0600` files are recommended.
 - The CLI checks the supplied file's format and draft, **not its provenance or checksum**. A different Draft 2019-09 schema may compile but is not DISA validation. Schema validity does not prove a finding correct or a checklist importable in STIG Viewer.
-- The DISA JSON is **not included** in the source or release package. The public download has no explicit redistribution notice in its archive; obtain and handle it under your organization's applicable terms. The validator library and its Draft 2019-09 meta-schemas remain vendored for disconnected builds.
+- The upstream ZIP has no explicit redistribution notice; the repository's license does **not** apply to this third-party schema. Verify your organization's authority before sharing the bundle beyond authorized recipients. The validator library and its Draft 2019-09 meta-schemas remain vendored for disconnected builds.
 
-For a privately obtained, extracted schema:
+To install a private copy from the repository root (or the extracted architecture archive):
 
 ```sh
-install -m 600 /secure/incoming/SV3_CKLB_1_0_JSON_SCHEMA.json \
+install -m 600 schemas/SV3_CKLB_1_0_JSON_SCHEMA.json \
   "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 # Compare with the published JSON hash above; Checkmate does not do that comparison for you.
@@ -104,7 +104,7 @@ sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 
 ## Prepare a private library and scan results
 
-These helper scripts are in the **source repository**, not the binary release archive. They are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install DISA's separate CKLB JSON schema.
+These helper scripts are in the **source repository**, not the binary release archive. They are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install the separately bundled CKLB JSON schema.
 
 To extract a new library from one official RHEL STIG ZIP, or a directory containing ZIPs **directly** (not recursively), choose a destination that does not exist. The script streams only `U_RHEL_N_STIG_VxRy_Manual-xccdf.xml` entries to a flat, owner-private directory. It does not unpack PDFs, scripts, or arbitrary archive paths, does not overwrite a library, and fails on duplicate benchmark filenames. The destination's parent must already exist, be owned by you, and not be group/world writable. Source ZIPs should be obtained and verified under your organization's DISA distribution procedures; this script does not authenticate an archive or validate the XCCDF's identity.
 
@@ -161,7 +161,7 @@ From the source tree on a build host with the vendored dependencies:
 (cd release && sha256sum -c SHA256SUMS)
 ```
 
-The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.4.0_linux_<arch>.tar.gz` and `release/SHA256SUMS` to the disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
+The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.4.0_linux_<arch>.tar.gz` and `release/SHA256SUMS` to an authorized disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
@@ -170,7 +170,7 @@ tar -xzf checkmate_0.4.0_linux_amd64.tar.gz
 install -m 755 checkmate_0.4.0_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
 ```
 
-Each architecture archive contains the binary, this README, and [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), with the same relative link inside the archive. It does **not** contain the DISA schema, private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
+Each architecture archive contains the binary, this README, [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), the DISA JSON schema and its [provenance notice](schemas/PROVENANCE.md), with the same relative links inside the archive. It does **not** contain private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
 
 For a **read-only deployment check**, use `scripts/preflight-offline.sh` from the separate `burden-of-proof` checkout, not from this Checkmate archive. Supply its executable converter, private scan and benchmark roots, and optionally Checkmate plus a completed-checklist root. It checks private tree ownership/modes and any root `SHA256SUMS`, runs converter `batch-cklb --dry-run`, and runs Checkmate `--list` (plus `--validate` only if you supply a schema). It creates and removes a private temporary workspace but does not scan hosts, convert evidence, or edit checklists. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md#read-only-deployment-preflight) for the exact invocation. A library's example tailoring YAML can be selected by the converter; preflight warns about it, but a dry run is **not** approval to use it as site policy.
 
