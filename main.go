@@ -39,6 +39,7 @@ type group struct {
 }
 type model struct {
 	files                                        []checklist.File
+	schema                                       *checklist.Schema
 	groups                                       []group
 	cursor, host, filter                         int
 	severityFilter                               int
@@ -414,7 +415,7 @@ func (m *model) apply() {
 		if !ref.selected {
 			continue
 		}
-		if err := checklist.Preflight(m.files[ref.file]); err != nil {
+		if err := checklist.Preflight(m.files[ref.file], m.schema); err != nil {
 			m.message = fmt.Sprintf("Preflight failed; no files changed: %v", err)
 			m.stage = browse
 			return
@@ -494,15 +495,29 @@ func max(a, b int) int {
 func main() {
 	root := flag.String("root", "", "root directory of CKLB checklists")
 	list := flag.Bool("list", false, "read-only inventory, no TUI")
-	validate := flag.Bool("validate", false, "validate newest CKLB per directory against bundled DISA CKLB 1.0 schema")
+	validate := flag.Bool("validate", false, "validate newest CKLB per directory against an operator-supplied schema")
+	schemaPath := flag.String("schema", "", "local JSON Schema Draft 2019-09 file; opt-in edit validation")
 	flag.Parse()
 	if *root == "" {
-		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--list | --validate]")
+		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--list | --validate --schema /private/schema.json | --schema /private/schema.json]")
 		os.Exit(2)
 	}
-	if *list && *validate {
-		fmt.Fprintln(os.Stderr, "--list and --validate are mutually exclusive")
+	if *list && (*validate || *schemaPath != "") {
+		fmt.Fprintln(os.Stderr, "--list cannot be combined with --validate or --schema")
 		os.Exit(2)
+	}
+	if *validate && *schemaPath == "" {
+		fmt.Fprintln(os.Stderr, "--validate requires --schema /path/to/extracted-schema.json")
+		os.Exit(2)
+	}
+	var schema *checklist.Schema
+	if *schemaPath != "" {
+		var err error
+		schema, err = checklist.LoadSchema(*schemaPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	}
 	files, err := checklist.Discover(*root)
 	if err != nil {
@@ -521,7 +536,7 @@ func main() {
 		for _, f := range files {
 			data, err := os.ReadFile(f.Path)
 			if err == nil {
-				err = checklist.ValidateSchema(data)
+				err = schema.Validate(data)
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "INVALID %s: %v\n", f.Path, err)
@@ -533,10 +548,12 @@ func main() {
 		if bad > 0 {
 			os.Exit(1)
 		}
-		fmt.Printf("Validated %d checklist(s) against DISA CKLB 1.0\n", len(files))
+		fmt.Printf("Validated %d checklist(s) against supplied schema\n", len(files))
 		return
 	}
-	if _, err = tea.NewProgram(newModel(files), tea.WithAltScreen()).Run(); err != nil {
+	m := newModel(files)
+	m.schema = schema
+	if _, err = tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -79,7 +79,11 @@ func (m model) frame(lines []string) string {
 func (m model) separator() string { return strings.Repeat("─", max(36, m.width-4)) }
 func (m model) render() string {
 	visible := m.visible()
-	lines := []string{fmt.Sprintf("CHECKMATE   %d checklist(s)  ·  %d control groups", len(m.files), len(m.groups)), fmt.Sprintf("Status: %s  Severity: %s  Search: %s  Host: %s  %d matches", filters[m.filter], severities[m.severityFilter], safe(m.query), safe(m.hostQuery), len(visible)), m.separator()}
+	schemaMode := "OFF"
+	if m.schema != nil {
+		schemaMode = "ON"
+	}
+	lines := []string{fmt.Sprintf("CHECKMATE   %d checklist(s)  ·  %d control groups   Schema: %s", len(m.files), len(m.groups), schemaMode), fmt.Sprintf("Status: %s  Severity: %s  Search: %s  Host: %s  %d matches", filters[m.filter], severities[m.severityFilter], safe(m.query), safe(m.hostQuery), len(visible)), m.separator()}
 	if len(visible) == 0 {
 		lines = append(lines, "No matching controls.", m.separator(), "/ control search  h host search  f status  F severity  q quit")
 		if m.stage == hostSearch {

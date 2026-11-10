@@ -9,15 +9,68 @@ Checkmate edits checklist answers. It does **not** run scans, assess a host, app
 You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build lives in the ignored `release/` directory:
 
 ```sh
-./scripts/package.sh 0.3.0
-./release/checkmate --root /private/checklists --list   # read-only inventory
-./release/checkmate --root /private/checklists --validate # official CKLB 1.0 schema check
-./release/checkmate --root /private/checklists          # interactive editor
+./scripts/package.sh 0.4.0
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --list
+./release/checkmate --root "$HOME/private/stig/completed_ckl"                     # editor; no schema check
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; schema check on selected files before writing
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --validate --schema "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"  # read-only schema check
 ```
 
-Point `--root` at a directory. Checkmate walks it and selects the most recently modified `.cklb` **in each directory**. A tie for newest, invalid CKLB data, or a symlink in the tree stops the run. Guessing which assessment you meant would be a bold feature for a compliance tool. Other files are ignored.
+`--schema` is **opt-in**. Without it, Checkmate still requires parseable CKLB JSON, STIG/rule data, IDs, and a supported status, but does **not** run full JSON Schema validation. `--validate` requires `--schema` and checks every selected newest checklist without entering the TUI; `--list` is an inventory, not schema validation, and cannot be combined with either flag. With `--schema` in editor mode, every **selected file** is schema-checked during batch preflight before any write. The tool does not silently consult a default schema.
+
+Point `--root` at a directory of completed checklists. Checkmate walks it and selects the most recently modified `.cklb` **in each directory**. A tie for newest, invalid *basic* CKLB data, or a symlink in the tree stops the run. Guessing which assessment you meant would be a bold feature for a compliance tool. Other files are ignored. If one directory has multiple benchmark checklists, only its newest CKLB is considered; put independent checklists in separate directories.
 
 Controls are grouped by benchmark ID, release text, group ID, and rule ID. Matching numbers from unrelated products or revisions do not earn a group photo together.
+
+## Inputs, layout, and permissions
+
+Only the completed `.cklb` tree is required by Checkmate. The optional schema is supplied separately. `stig_library` is **not a Checkmate input**: it belongs to the scan-to-checklist converter and may contain private DISA XCCDF benchmarks and per-OS tailoring YAML. Do not pass it as `--root`, and do not bundle its contents with Checkmate. Checkmate does not read XML, YAML, HTML, ARF, or provenance sidecars.
+
+Example owner-private layout (mode recommendations shown; Checkmate does not change directory permissions):
+
+```text
+$HOME/private/stig/                                   0700  owner directory
+├── schema/                                           0700  optional, operator supplied
+│   └── SV3_CKLB_1_0_JSON_SCHEMA.json                 0600  extracted JSON, not the ZIP
+├── stig_library/                                     0700  converter only; optional here
+│   ├── U_RHEL_9_STIG_V2R10_Manual-xccdf.xml          0600  example benchmark
+│   └── RHEL_9_STIG.tailoring.yaml                    0600  example policy
+└── completed_ckl/                                   0700  pass THIS as --root
+    ├── rhel9-node1/                                 0700
+    │   ├── older.cklb                               0600  ignored if newer exists
+    │   └── newer.cklb                               0600  selected by modification time
+    └── switch1/                                    0700
+        └── assessment.cklb                          0600
+```
+
+The account running Checkmate must be able to traverse and read every directory/file under `--root`; for edits it must also be able to create and rename a temporary file in **each selected CKLB's parent directory**. Parent-directory write permission matters even if the CKLB itself is readable. Use an owner-controlled tree and avoid concurrent writers. A private layout can be prepared without granting other users access:
+
+```sh
+umask 077
+install -d -m 700 "$HOME/private/stig" "$HOME/private/stig/schema" \
+  "$HOME/private/stig/stig_library" "$HOME/private/stig/completed_ckl" \
+  "$HOME/private/stig/completed_ckl/rhel9-node1"
+install -m 600 /secure/incoming/assessment.cklb \
+  "$HOME/private/stig/completed_ckl/rhel9-node1/assessment.cklb"
+```
+
+For an existing private tree, one verified example is `/scratch/src/admin/stig/completed_ckl` (directory mode `0700`, CKLB mode `0600`). Use `--root /scratch/src/admin/stig/completed_ckl`; the neighboring `/scratch/src/admin/stig/stig_library` is for the converter, not this editor. Work on a private **copy** when testing edits; `--list` and `--validate` are read-only.
+
+### Optional schema requirements
+
+- Obtain DISA's [STIG Viewer 3 CKLB 1.0 schema ZIP](https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/SV3_CKLB_1_0_JSON_SCHEMA.zip) separately and extract `SV3_CKLB_1_0_JSON_SCHEMA.json`. The ZIP itself is not accepted. The JSON file published 2024-01-10 has SHA-256 `8b88205de07662006e1660b1decad677d344828d6687b1dd26bca15105b7bb37`; compare your extracted file's hash before treating it as the DISA schema.
+- `--schema` must name a **readable local regular `.json` file**, not a symlink. It must declare `$schema` as `https://json-schema.org/draft/2019-09/schema`. Internal references work; external file or network references are not loaded. The file's parent directories must be traversable. Owner-controlled `0700` directories and `0600` files are recommended.
+- The CLI checks the supplied file's format and draft, **not its provenance or checksum**. A different Draft 2019-09 schema may compile but is not DISA validation. Schema validity does not prove a finding correct or a checklist importable in STIG Viewer.
+- The DISA JSON is **not included** in the source or release package. The public download has no explicit redistribution notice in its archive; obtain and handle it under your organization's applicable terms. The validator library and its Draft 2019-09 meta-schemas remain vendored for disconnected builds.
+
+For a privately obtained, extracted schema:
+
+```sh
+install -m 600 /secure/incoming/SV3_CKLB_1_0_JSON_SCHEMA.json \
+  "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
+sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
+# Compare with the published JSON hash above; Checkmate does not do that comparison for you.
+```
 
 ## Drive the terminal
 
@@ -28,39 +81,37 @@ Controls are grouped by benchmark ID, release text, group ID, and rule ID. Match
 - `v`: read the focused host's paged full finding details and comment. In the confirmation screen, `v` opens a paged, full old/new status and comment preview for the focused selected host; `Tab` moves to the next selected host.
 - `e`: edit selected hosts. Choose `1` Open, `2` Not a Finding, `3` Not Applicable, or `4` Not Reviewed. Type a required comment (`Ctrl+J` inserts a newline), then Enter to review each selected host's old → new answer. `y` applies; Esc cancels; `q` quits. Bulk Open → Not a Finding also requires typing `OVERRIDE` in a second confirmation. That is not evidence; it is a speed bump with manners.
 
-All four existing states are editable. **Select only hosts that actually share the decision**; a shared STIG ID is not a shared configuration. Search and comment editing are independent of control navigation. Full comments and finding details can be paged for review.
+All four existing states are editable. **Select only hosts that actually share the decision**; a shared STIG ID is not a shared configuration. Full comments and finding details can be paged for review.
 
 Status badges follow the [STIG Viewer 3.x guide](https://dl.dod.cyber.mil/wp-content/uploads/stigs/pdf/U_STIG_Viewer_3-x_User_Guide_V1R7.pdf): Open is red, Not a Finding green, Not Applicable black on a pale badge, and Not Reviewed gray. The symbols and labels remain visible in a monochrome terminal; even the colors know better than to be your sole source of evidence.
 
 ## What an edit actually does
 
-Checkmate replaces the status and comment for each selected control in its existing CKLB. Other JSON fields are preserved, although the JSON formatting is rewritten. It stages each file beside the original, syncs it, retains its permissions, and renames it over the original. Before the batch, it checks **all selected files** for unchanged bytes, official schema validity, and ability to stage replacements. Each edit checks its file again before writing. A small mercy for anyone else with the same bright idea.
+Checkmate replaces the status and comment for each selected control in its existing CKLB. Other JSON fields are preserved, although the JSON formatting is rewritten. It stages each file beside the original, syncs it, retains its permissions, and renames it over the original. Before the batch, it checks **all selected files** for unchanged bytes and ability to stage replacements; with `--schema`, it also validates them against the supplied schema. Each edit checks its file again before writing. A small mercy for anyone else with the same bright idea.
 
 A multi-file edit is **not transactionally atomic**. If a later file fails, earlier files remain changed; the TUI reports how many succeeded. Do not edit the same checklists concurrently or run the tool on a tree writable by an untrusted process.
 
 **Important:** Existing `.cklb.provenance.json` sidecars are not changed. Their recorded CKLB hashes become stale. Checkmate does not sign output or establish that a bulk decision is correct for every host. Keep a separate backup before editing irreplaceable assessments.
-
-`--validate` checks the newest checklist in each directory against DISA's [STIG Viewer 3 CKLB 1.0 schema](https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/SV3_CKLB_1_0_JSON_SCHEMA.zip), published 2024-01-10. The original JSON is embedded in the binary for offline operation (SHA-256 `8b88205de07662006e1660b1decad677d344828d6687b1dd26bca15105b7bb37`). Schema validity says the JSON has the expected shape, not that any security finding is true. Schema-invalid selected files are blocked from interactive edits; `--list` is still an inventory, not a validation report.
 
 ## Disconnected installation
 
 From the source tree on a build host with the vendored dependencies:
 
 ```sh
-./scripts/package.sh 0.3.0
+./scripts/package.sh 0.4.0
 (cd release && sha256sum -c SHA256SUMS)
 ```
 
-The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.3.0_linux_<arch>.tar.gz` and `release/SHA256SUMS` to the disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
+The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.4.0_linux_<arch>.tar.gz` and `release/SHA256SUMS` to the disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
 mkdir -p "$HOME/.local/bin"
-tar -xzf checkmate_0.3.0_linux_amd64.tar.gz
-install -m 755 checkmate_0.3.0_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
+tar -xzf checkmate_0.4.0_linux_amd64.tar.gz
+install -m 755 checkmate_0.4.0_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
 ```
 
-The archive contains the binary and this README. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
+The archive contains the binary and this README, **not** DISA's schema or private checklist/library files. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
 
 ## Development
 

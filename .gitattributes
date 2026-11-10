@@ -1,4 +1,2 @@
-# Keep DISA's published schema byte-for-byte, including its CRLF line endings.
-internal/checklist/schema/SV3_CKLB_1_0_JSON_SCHEMA.json whitespace=cr-at-eol
 # Vendored upstream README retains its existing final blank line.
 vendor/github.com/santhosh-tekuri/jsonschema/v6/README.md whitespace=-blank-at-eof

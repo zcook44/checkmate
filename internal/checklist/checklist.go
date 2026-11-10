@@ -97,7 +97,7 @@ func Load(path string) (File, error) {
 
 // Preflight verifies the selected bytes and the ability to stage a replacement.
 // Edit repeats the hash check immediately before writing.
-func Preflight(f File) error {
+func Preflight(f File, schema *Schema) error {
 	if _, err := regular(f.Path); err != nil {
 		return err
 	}
@@ -108,8 +108,10 @@ func Preflight(f File) error {
 	if sha256.Sum256(data) != f.Digest {
 		return fmt.Errorf("%s: checklist changed since load", f.Path)
 	}
-	if err := ValidateSchema(data); err != nil {
-		return fmt.Errorf("%s: %w", f.Path, err)
+	if schema != nil {
+		if err := schema.Validate(data); err != nil {
+			return fmt.Errorf("%s: %w", f.Path, err)
+		}
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(f.Path), ".checkmate-preflight-*")
 	if err != nil {

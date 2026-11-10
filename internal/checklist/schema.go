@@ -1,51 +1,58 @@
 package checklist
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
-	"sync"
+	"os"
+	"path/filepath"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// Official DISA STIG Viewer 3 CKLB 1.0 schema, published 2024-01-10.
-// Source: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/SV3_CKLB_1_0_JSON_SCHEMA.zip
-//
-//go:embed schema/SV3_CKLB_1_0_JSON_SCHEMA.json
-var schemaFS embed.FS
-var schemaOnce sync.Once
-var compiled *jsonschema.Schema
-var schemaErr error
+// Schema is an operator-supplied JSON Schema. No schema bytes are distributed
+// with Checkmate, and no external references are fetched by the compiler.
+type Schema struct{ compiled *jsonschema.Schema }
 
-func ValidateSchema(data []byte) error {
-	schemaOnce.Do(func() {
-		b, err := schemaFS.ReadFile("schema/SV3_CKLB_1_0_JSON_SCHEMA.json")
-		if err != nil {
-			schemaErr = err
-			return
-		}
-		var doc any
-		if err = json.Unmarshal(b, &doc); err != nil {
-			schemaErr = err
-			return
-		}
-		c := jsonschema.NewCompiler()
-		if err = c.AddResource("cklb.json", doc); err != nil {
-			schemaErr = err
-			return
-		}
-		compiled, schemaErr = c.Compile("cklb.json")
-	})
-	if schemaErr != nil {
-		return fmt.Errorf("compile bundled CKLB 1.0 schema: %w", schemaErr)
+// LoadSchema requires a local regular JSON Schema Draft 2019-09 file.
+func LoadSchema(path string) (*Schema, error) {
+	if filepath.Ext(path) != ".json" {
+		return nil, fmt.Errorf("schema must be an extracted .json file: %s", path)
+	}
+	if _, err := regular(path); err != nil {
+		return nil, fmt.Errorf("schema: %w", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read schema: %w", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("invalid schema JSON: %w", err)
+	}
+	if doc["$schema"] != "https://json-schema.org/draft/2019-09/schema" {
+		return nil, fmt.Errorf("schema must declare JSON Schema Draft 2019-09")
+	}
+	c := jsonschema.NewCompiler() // no URL loader: external references fail closed
+	if err := c.AddResource("checkmate-schema.json", doc); err != nil {
+		return nil, fmt.Errorf("load schema: %w", err)
+	}
+	compiled, err := c.Compile("checkmate-schema.json")
+	if err != nil {
+		return nil, fmt.Errorf("compile schema: %w", err)
+	}
+	return &Schema{compiled: compiled}, nil
+}
+
+func (s *Schema) Validate(data []byte) error {
+	if s == nil {
+		return fmt.Errorf("schema is not loaded")
 	}
 	var doc any
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("invalid CKLB JSON: %w", err)
 	}
-	if err := compiled.Validate(doc); err != nil {
-		return fmt.Errorf("CKLB 1.0 schema: %w", err)
+	if err := s.compiled.Validate(doc); err != nil {
+		return fmt.Errorf("CKLB schema: %w", err)
 	}
 	return nil
 }
