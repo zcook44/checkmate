@@ -4,6 +4,34 @@ A terminal editor for STIG Viewer `.cklb` checklists. It reads CKLB JSON, so Cis
 
 Checkmate edits checklist answers. It does **not** run scans, assess a host, approve a control, or make an incorrect answer correct by displaying it in a handsome terminal.
 
+## Primary workflow
+
+```mermaid
+flowchart TD
+    subgraph upstream["Upstream: separate tools, not Checkmate"]
+        scan["Ansible runs OpenSCAP on a host"] --> evidence["Private same-run XCCDF + HTML + ARF"]
+        evidence --> converter["burden-of-proof Go converter"]
+        benchmark["Official DISA manual XCCDF + per-OS policy"] --> converter
+        converter --> generated["CKLB review candidate + provenance sidecar"]
+    end
+    generated --> root["Owner-private CKLB --root"]
+    external["Other vendor CKLBs"] --> root
+    subgraph editor["Checkmate: deliberate in-place review"]
+        root --> discover["Newest CKLB per directory; fail on ties or symlinks"]
+        discover --> group["Group by benchmark, release, group ID and rule ID"]
+        group --> choose["Filter, inspect evidence, select hosts explicitly"]
+        choose --> preview["Choose status + comment; preview each old to new answer"]
+        preview --> guard["Preflight selected files: unchanged bytes and writable staging"]
+        schema["Optional operator-supplied CKLB schema"] -.->|Only with --schema| guard
+        guard --> confirm["Confirm; bulk Open to Not a Finding also requires OVERRIDE"]
+        confirm --> edit["Replace selected CKLBs in place; report partial failures"]
+    end
+    edit --> human["Human review, independent validation, approval and delivery"]
+    edit -.-> stale["Existing provenance sidecar hash becomes stale"]
+```
+
+Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For private copied RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md); those inputs are Git-ignored and not in the generic release.
+
 ## Run locally
 
 You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build lives in the ignored `release/` directory:
