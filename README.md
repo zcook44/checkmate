@@ -106,10 +106,10 @@ sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 
 These helper scripts are in the **source repository**, not the binary release archive. They are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install the separately bundled CKLB JSON schema.
 
-To extract a new library from one official RHEL STIG ZIP, or a directory containing ZIPs **directly** (not recursively), choose a destination that does not exist. The script streams only `U_RHEL_N_STIG_VxRy_Manual-xccdf.xml` entries to a flat, owner-private directory. It does not unpack PDFs, scripts, or arbitrary archive paths, does not overwrite a library, and fails on duplicate benchmark filenames. The destination's parent must already exist, be owned by you, and not be group/world writable. Source ZIPs should be obtained and verified under your organization's DISA distribution procedures; this script does not authenticate an archive or validate the XCCDF's identity.
+To extract a new library from official RHEL or Cisco STIG ZIPs, or a directory containing ZIPs **directly** (not recursively), choose a destination that does not exist. The script streams only RHEL `U_RHEL_N_STIG_VxRy_Manual-xccdf.xml` and Cisco `U_Cisco_*STIG_VxRy_Manual-xccdf.xml` / `U_Cisco_*VxRy_STIG_Manual-xccdf.xml` entries to a flat, owner-private directory. Cisco filenames include IOS/IOS-XE/IOS-XR Router and Switch, ASA, ACI, ISE, NX-OS and SNA variants; for example `U_Cisco_IOS_Router_NDM_STIG_V3R9_Manual-xccdf.xml` and `U_Cisco_ACI_RTR_Manual_V1R2_STIG_Manual-xccdf.xml`. It does not unpack PDFs, scripts, or arbitrary archive paths, does not overwrite a library, and fails on duplicate benchmark filenames. The destination's parent must already exist, be owned by you, and not be group/world writable. Source ZIPs should be obtained and verified under your organization's DISA distribution procedures; this script does not authenticate an archive or validate the XCCDF's identity.
 
 ```sh
-# Example: SOURCE contains U_RHEL_7_...STIG.zip, U_RHEL_9_...STIG.zip, etc.
+# Example: SOURCE contains U_RHEL_9_...STIG.zip, U_Cisco_IOS_Router_...STIG.zip, etc.
 ./scripts/unpack-stig-library.sh \
   /scratch/src/admin/stig/stig_library_source_archives \
   "$HOME/private/stig/stig_library"
@@ -118,7 +118,7 @@ To extract a new library from one official RHEL STIG ZIP, or a directory contain
 # New library directory: 0700; extracted XML files: 0600.
 ```
 
-Only versions actually present in the source are extracted; if a RHEL release is missing, the converter cannot select its benchmark. Optional `RHEL_N_STIG.tailoring.yaml` policies are **not** in the ZIP and must be placed at the library root separately, as owner-owned regular files with mode `0600`. The converter also checks benchmark identity/release metadata when it uses one.
+Only versions actually present in the source are extracted; if a RHEL release or Cisco benchmark is missing, this script cannot supply it. The separate converter uses RHEL XCCDF results with `batch-cklb` and supports saved Cisco running-config review candidates via the explicitly selected benchmark in `cisco-cklb`; extraction alone does not classify controls. Optional `RHEL_N_STIG.tailoring.yaml` policies are **not** in the ZIP and must be placed at the library root separately, as owner-owned regular files with mode `0600`. The converter also checks benchmark identity/release metadata when it uses one.
 
 For an existing, owner-controlled OpenSCAP results tree, inspect its proposed permission changes first. `--apply` changes **all** directories beneath the requested root to `0700` and **all** regular files to `0600`, including unrelated files in that tree. It does not change contents or ownership, and aborts before changing modes if it encounters a symlink, multiply-linked regular file, special file, foreign-owned entry, unreadable subtree, or no recognizable XCCDF result. Use the narrow results root you intend, not a parent that also contains the library. Do not run it while another process is modifying the tree; chmod across multiple files is not atomic, so a runtime failure can leave earlier entries changed.
 
