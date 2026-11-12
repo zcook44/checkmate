@@ -1,7 +1,3 @@
-dist/
-release/
-examples/
-benchmarks/
 __pycache__/
 checkmate
 *.cklb
@@ -9,9 +5,3 @@ checkmate
 *.results.xml
 *.results.arf.xml
 *.report.html
-
-# Only synthetic Cisco fixtures are eligible for versioning; keep other examples private.
-!/examples/
-/examples/*
-!/examples/cisco-synthetic/
-!/examples/cisco-synthetic/**
