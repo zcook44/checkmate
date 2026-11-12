@@ -9,14 +9,15 @@ Checkmate edits checklist answers. It does **not** run scans, assess a host, app
 ```mermaid
 flowchart TD
     subgraph upstream["Upstream: separate tools, not Checkmate"]
-        scan["Ansible runs OpenSCAP on a host"] --> evidence["Private same-run XCCDF + HTML + ARF"]
+        scan["External OpenSCAP scan"] --> evidence["Private same-run XCCDF + HTML + ARF"]
         evidence --> converter["burden-of-proof converter: pair scan bundle, reconcile V/SV IDs"]
         benchmark["Official DISA manual XCCDF + optional per-OS policy"] --> converter
         converter --> generated["CKLB review candidate + provenance sidecar"]
     end
     generated --> root["Owner-private CKLB --root"]
+    cisco["Separate converter: saved Cisco config + selected benchmark; two pinned L2S checks may be decided; others need review"] --> root
     external["Other vendor CKLBs"] --> root
-    root -.-> inventory["Read-only --list or --validate --schema"]
+    root -.-> inventory["Read-only --list OR --validate --schema"]
     subgraph editor["Checkmate: deliberate in-place review"]
         root --> discover["Newest CKLB per directory; fail on ties or symlinks"]
         discover --> group["Group by benchmark, release, group ID and rule ID"]
@@ -31,14 +32,17 @@ flowchart TD
     edit -.-> stale["Existing provenance sidecar hash becomes stale"]
 ```
 
-Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For private copied RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md); that guide is packaged, but its Git-ignored inputs are not.
+Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. The separate converter's Cisco evaluator covers only two pinned IOS-XE Switch L2S V3R2 global checks; the complete all-`auto` inventories do not answer the remaining controls. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
 
 ## Run locally
 
-You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build lives in the ignored `release/` directory:
+You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build writes to `release/`; that directory also contains tracked historical artifacts (see [disconnected installation](#disconnected-installation)):
 
 ```sh
-./scripts/package.sh 0.4.1
+VERSION=0.4.2  # example candidate; choose an unused version
+[ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
+[ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
+./scripts/package.sh "$VERSION"
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --list
 ./release/checkmate --root "$HOME/private/stig/completed_ckl"                     # editor; no schema check
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; validate selected files before writing
@@ -84,7 +88,7 @@ install -m 600 /secure/incoming/assessment.cklb \
   "$HOME/private/stig/completed_ckl/rhel9-node1/assessment.cklb"
 ```
 
-For an existing private tree, one verified example is `/scratch/src/admin/stig/completed_ckl` (directory mode `0700`, CKLB mode `0600`). Use `--root /scratch/src/admin/stig/completed_ckl`; the neighboring `/scratch/src/admin/stig/stig_library` is for the converter, not this editor. Work on a private **copy** when testing edits; `--list` and `--validate` are read-only.
+If your private checklist tree is `/scratch/src/admin/stig/completed_ckl`, use `--root /scratch/src/admin/stig/completed_ckl` after checking its ownership and modes; the neighboring `stig_library` is for the converter, not this editor. Work on a private **copy** when testing edits; `--list` and `--validate` are read-only.
 
 ### Optional schema requirements
 
@@ -136,7 +140,7 @@ The path must be canonical and absolute (no symlink components); the script refu
 - `j/k` or arrows: move between controls. `Tab`: focus a host. `Space`: include or exclude that host from the edit. Nothing starts selected; Checkmate has resisted the temptation to decide for your entire fleet.
 - `PgUp/PgDn`: move through affected hosts a page at a time. `Home/End`: jump to the first or last host; `Shift+Tab`: focus the previous host. The confirmation screen pages its selected-host list too. Fifty hosts no longer require a fifty-line terminal and a prayer.
 - `f`: cycle status filters; `F`: cycle severity filters; `/`: search IDs and titles; `h`: search checklist paths/hosts. Filtering does not select or silently expand the edit set.
-- `m`: select only hosts matching the active status filter (within the host search); `A`: select all **visible** hosts; `c`: clear all selection for this control. Check the per-state counts in the confirmation screen before trusting an `A`. Quite the demanding letter.
+- `m`: replace this control's selection with hosts matching the active status filter (within the host search); with the default `all` filter, it clears selection. `A`: select all hosts visible under the host search; `c`: clear all selection for this control. Check the per-state counts in the confirmation screen before trusting an `A`. Quite the demanding letter.
 - `v`: read the focused host's paged full finding details and comment. In the confirmation screen, `v` opens a paged, full old/new status and comment preview for the focused selected host; `Tab` moves to the next selected host.
 - `e`: edit selected hosts. Choose `1` Open, `2` Not a Finding, `3` Not Applicable, or `4` Not Reviewed. Type a required comment (`Ctrl+J` inserts a newline), then Enter to review each selected host's old → new answer. `y` applies; Esc cancels; `q` quits. Bulk Open → Not a Finding also requires typing `OVERRIDE` in a second confirmation. That is not evidence; it is a speed bump with manners.
 
@@ -157,20 +161,33 @@ A multi-file edit is **not transactionally atomic**. If a later file fails, earl
 From the source tree on a build host with the vendored dependencies:
 
 ```sh
-./scripts/package.sh 0.4.1
+VERSION=0.4.2  # example candidate; choose an unused version
+[ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
+[ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
+./scripts/package.sh "$VERSION"
 (cd release && sha256sum -c SHA256SUMS)
 ```
 
-The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. The entire `release/` directory is ignored by Git; none of those binaries is a source file. Transfer the appropriate `release/checkmate_0.4.1_linux_<arch>.tar.gz` and `release/SHA256SUMS` to an authorized disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
+The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. Historical archives, a private-input transfer archive, and a manifest in `release/` are tracked in this checkout; the freshly built executable is ignored. Reusing an existing version overwrites tracked archives and the manifest; choose a new candidate version and review `git status` afterward. Do not assume the release directory is private or wholly ignored. Transfer the appropriate freshly built `release/checkmate_${VERSION}_linux_<arch>.tar.gz` and `release/SHA256SUMS` to an authorized disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
 
 ```sh
+VERSION=0.4.2  # match the package you transferred
 sha256sum -c SHA256SUMS --ignore-missing
 mkdir -p "$HOME/.local/bin"
-tar -xzf checkmate_0.4.1_linux_amd64.tar.gz
-install -m 755 checkmate_0.4.1_linux_amd64/checkmate "$HOME/.local/bin/checkmate"
+tar -xzf "checkmate_${VERSION}_linux_amd64.tar.gz"
+install -m 755 "checkmate_${VERSION}_linux_amd64/checkmate" "$HOME/.local/bin/checkmate"
 ```
 
 Each architecture archive contains the binary, this README, [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), the DISA JSON schema and its [provenance notice](schemas/PROVENANCE.md), with the same relative links inside the archive. It does **not** contain private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
+
+```mermaid
+flowchart LR
+    source["Source checkout: Go, vendor, scripts, docs, tracked fixtures"] --> pack["scripts/package.sh VERSION"]
+    pack --> generic["Generic archive: binary + README + offline guide + schema + notice"]
+    generic --> checksum["release/SHA256SUMS: local integrity check"]
+    checksum --> offline["Authorized disconnected host: verify, extract, run"]
+    private["Private scans, CKLB copies, benchmarks, tailoring"] -.->|Separate authorized transfer; never in generic archive| offline
+```
 
 For a **read-only deployment check**, use `scripts/preflight-offline.sh` from the separate `burden-of-proof` checkout, not from this Checkmate archive. Supply its executable converter, private scan and benchmark roots, and optionally Checkmate plus a completed-checklist root. It checks private tree ownership/modes and any root `SHA256SUMS`, runs converter `batch-cklb --dry-run`, and runs Checkmate `--list` (plus `--validate` only if you supply a schema). It creates and removes a private temporary workspace but does not scan hosts, convert evidence, or edit checklists. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md#read-only-deployment-preflight) for the exact invocation. A library's example tailoring YAML can be selected by the converter; preflight warns about it, but a dry run is **not** approval to use it as site policy.
 
@@ -180,4 +197,4 @@ For a **read-only deployment check**, use `scripts/preflight-offline.sh` from th
 GOPROXY=off GOSUMDB=off go test -mod=vendor ./...
 ```
 
-Keep original source scans and assessments outside this repository, and keep private example **copies** under the ignored `examples/` and `benchmarks/` directories. Do not commit generated checklists, scan output, official benchmarks, or host findings. The repository has enough material to review without donating your infrastructure data to it.
+Keep new source scans and assessments outside this repository. This checkout already tracks selected `examples/` fixtures, `benchmarks/` content, and `release/private-offline-inputs.tar.gz` with copied RHEL scan bundles. Those are historical source-tree contents, **not** ingredients in the generic Checkmate binary archive. `.gitignore` patterns do not untrack files already in Git. Do not edit or add private assessment data to the repository; restrict access to this private remote and handle any removal from Git history as a separate, reviewed change. Stage new practice copies in an owner-private directory outside the checkout (see the [offline examples guide](docs/OFFLINE-EXAMPLES.md)). Inspect the archive manifest before distribution.

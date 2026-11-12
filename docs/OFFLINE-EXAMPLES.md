@@ -1,60 +1,68 @@
-# Offline example inputs (private, local only)
+# Offline example inputs (separate private copies)
 
-The Checkmate checkout on this workstation has two owner-private, Git-ignored directories:
+Checkmate edits CKLB files; it does not convert scans. The source checkout currently contains tracked `examples/` fixtures and `benchmarks/` files, including selected RHEL 7–10 material. It also tracks `release/private-offline-inputs.tar.gz`, a previously committed copy of RHEL scan bundles; this is **source history**, not a generic binary-package ingredient. Git ignore patterns do not protect files already tracked. Do not edit them to try the TUI. A new copy in an owner-private directory outside the checkout is the safer rehearsal. This guide and the schema travel in the generic binary archive; the example data does not. Apparently the binary is less interested in your host evidence than Git once was.
 
-- `examples/rhel{7,8,9,10}/<host>/` — one **copied real** NODE1 OpenSCAP XCCDF result, matching HTML report and ARF, plus its existing CKLB per OS. No provenance sidecars are copied; editing a CKLB does not regenerate them.
-- `benchmarks/` — the current local RHEL 7 V3R15, 8 V2R9, 9 V2R10, and 10 V1R3 DISA manual XCCDF XML, plus each OS's current converter tailoring YAML. These are converter inputs, **not** Checkmate inputs.
+## Stage from authorized source trees
 
-These contain host assessment evidence and official benchmark content. Neither directory is committed or included in Checkmate's binary release; **this guide itself is included** beside the README in both amd64 and arm64 archives. Do **not** force-add the inputs to Git. The CKLB schema is included at `schemas/SV3_CKLB_1_0_JSON_SCHEMA.json`; `--schema` remains an explicit opt-in. The source `stig_library` and saved assessment tree remain unchanged.
-
-## Recreate from the owner-private source trees
-
-Run this from a checkout on the authorized workstation, with both destinations absent. Python 3's standard library suffices. The input layout must have exactly one `RHELN-NODE1/scan_*/<host>` under each `rhelN` directory; for multiple runs, first prepare a private source selection with one desired run per OS. The script refuses symlinks, non-private source files and existing destinations. It stages private copies, writes per-directory `SHA256SUMS`, and does not change originals.
+From the Checkmate source checkout, use an existing, canonical, owner-owned output directory that is not group/world writable. Its `examples/` and `benchmarks/` children must be absent. The default `--output` is the checkout and **will fail here** because those destinations already exist. Python 3's standard library suffices. The input layout must have exactly one `RHELN-NODE1/scan_*/<host>` under each `rhelN` directory; for multiple runs, first prepare a private source selection with one desired run per OS. The script refuses symlinks, non-private source files and existing destinations. It copies one same-run XCCDF result, HTML report, ARF and existing CKLB per OS, without provenance sidecars. It also copies the highest V/R manual XCCDF XML and the corresponding converter tailoring YAML per OS. It writes a SHA256SUMS file in each destination tree, not in the original source trees.
 
 ```sh
+umask 077
+install -d -m 700 "$HOME/private/checkmate-practice"
 python3 scripts/stage-offline-examples.py \
   --scan-root /scratch/src/admin/stig/completed_ckl/Q4_2026 \
-  --library-root /scratch/src/admin/stig/stig_library
-(cd examples && sha256sum -c SHA256SUMS)
-(cd benchmarks && sha256sum -c SHA256SUMS)
+  --library-root /scratch/src/admin/stig/stig_library \
+  --output "$HOME/private/checkmate-practice"
+(cd "$HOME/private/checkmate-practice/examples" && sha256sum -c SHA256SUMS)
+(cd "$HOME/private/checkmate-practice/benchmarks" && sha256sum -c SHA256SUMS)
 ```
 
-The `--output` argument can instead name another existing, owned, canonical directory without group/world write access. `examples/` and `benchmarks/` must not already exist there. The selected benchmarks are the highest V/R XML available for each OS; the script copies the corresponding per-OS policy YAML. It does not authenticate DISA source bytes or verify the source CKLB against the separate schema.
+The script selects the benchmark files available in the source library; it does not authenticate DISA bytes or validate the source CKLB against the separate schema. The examples are private copied assessment material, not sanitized demonstration data. Tailoring YAML is converter policy input, never a Checkmate input; an example policy requires separate site approval before use.
 
 ## Exercise after an offline build
 
 ```sh
-GOPROXY=off GOSUMDB=off ./scripts/package.sh 0.4.1
-./release/checkmate --root "$PWD/examples" --list
-# Interactive editor (in-place edits to the PRIVATE COPIES, not saved source):
-./release/checkmate --root "$PWD/examples"
-# Optional read-only validation with the included DISA CKLB schema:
-./release/checkmate --root "$PWD/examples" --validate --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"
+VERSION=0.4.2  # choose a version not already present in release/
+[ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
+[ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
+GOPROXY=off GOSUMDB=off ./scripts/package.sh "$VERSION"
+./release/checkmate --root "$HOME/private/checkmate-practice/examples" --list
+./release/checkmate --root "$HOME/private/checkmate-practice/examples" --validate \
+  --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"
+# Interactive editor; changes only your practice copies:
+./release/checkmate --root "$HOME/private/checkmate-practice/examples"
 ```
 
-To test conversion read-only, run the **separate** `burden-of-proof` Go converter from its source checkout, passing absolute paths to this repository's `examples/` and `benchmarks/` with `batch-cklb --dry-run`. The supplied scan bundles include HTML+ARF; a successful dry run reports four bundles and writes nothing. Permission or naming validity alone does not assert assessment correctness. If you edit a staged CKLB, its `examples/SHA256SUMS` will fail until you deliberately re-stage or explicitly account for your changes; that failure is useful.
+`--list` and `--validate --schema` are read-only; the editor replaces selected CKLBs in place. After an edit, the copied `examples/SHA256SUMS` fails until you explicitly account for that change or re-stage from the source. Existing converter provenance sidecars are not copied or refreshed. A successful schema check is not a finding review, a STIG Viewer import, or approval.
+
+To test conversion read-only, run the **separate** converter's `batch-cklb --dry-run` using absolute `--input-root "$HOME/private/checkmate-practice/examples"` and `--library-root "$HOME/private/checkmate-practice/benchmarks"`. The staged bundles include HTML+ARF; whether a particular converter build accepts them must be checked with that build. Permission and naming validity alone do not establish assessment correctness.
 
 ## Read-only deployment preflight
 
-The Bash preflight belongs to **`burden-of-proof/scripts/preflight-offline.sh`**, not Checkmate. From this checkout, with a separately built executable converter and owner-private, canonical absolute paths to the staged inputs:
+The optional `scripts/preflight-offline.sh` belongs to the **separate** converter checkout, not Checkmate. With a separately built executable converter and owner-private, canonical absolute paths to the staged inputs:
 
 ```sh
 /path/to/burden-of-proof/scripts/preflight-offline.sh \
   --converter /private/bin/stig-evidence \
-  --input-root "$PWD/examples" --library-root "$PWD/benchmarks" \
-  --checkmate "$PWD/release/checkmate" --checklist-root "$PWD/examples"
+  --input-root "$HOME/private/checkmate-practice/examples" \
+  --library-root "$HOME/private/checkmate-practice/benchmarks" \
+  --checkmate "$PWD/release/checkmate" \
+  --checklist-root "$HOME/private/checkmate-practice/examples"
 # Optional: add --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"
 ```
 
-The converter and both roots are required; `--checkmate` and `--checklist-root` must be supplied together, and `--schema` requires both. Preflight checks each tree's ownership and private modes, verifies a root `SHA256SUMS` when present, runs converter `batch-cklb --dry-run`, then Checkmate `--list` and optionally `--validate --schema`. It writes only a transient private workspace and never runs scans, conversions that write CKLBs, or checklist edits. An already edited staged CKLB will fail the manifest check; re-stage only after accounting for the intentional change. The converter may auto-select `RHEL_*_STIG.tailoring.yaml` from the library: the warning about example tailoring is not an approval to use it as site policy.
+Verify the separate script's interface in that checkout before running it. Its expected contract is a dry-run converter check, Checkmate `--list`, and optional schema validation; it does not run a scan or perform a checklist edit. An already edited staged CKLB will fail a manifest check. Do not treat example tailoring selected by the converter as approved site policy.
 
-For disconnected transfer, a **separate private archive** is generated locally as `release/private-offline-inputs.tar.gz` with `release/private-offline-inputs.sha256`. These are Git-ignored, mode `0600`, and are **not** part of the generic Checkmate binary release or its `SHA256SUMS`. Regenerate them from the repository root after changing staged inputs:
+## Transfer private inputs separately
+
+The generic Checkmate archives deliberately omit example scans, CKLBs, benchmarks and tailoring. If authorized to move staged inputs, make a distinct owner-private archive outside the checkout and verify it after transfer. Do not copy it over the already tracked `release/private-offline-inputs.tar.gz`: that historical archive is not a suitable destination for new assessments, and an archive under `release/` is not magically ignored.
 
 ```sh
 umask 077
-tar -czf release/private-offline-inputs.tar.gz examples benchmarks
-(cd release && sha256sum private-offline-inputs.tar.gz > private-offline-inputs.sha256)
-(cd release && sha256sum -c private-offline-inputs.sha256)
+cd "$HOME/private/checkmate-practice"
+tar -czf private-offline-inputs.tar.gz examples benchmarks
+sha256sum private-offline-inputs.tar.gz > private-offline-inputs.sha256
+sha256sum -c private-offline-inputs.sha256
 ```
 
-Transfer both only to authorized recipients; verify the archive using `(cd release && sha256sum -c private-offline-inputs.sha256)` before extracting into an owner-private directory (`0700`). Run the example manifest checks from that extraction directory, `(cd examples && sha256sum -c SHA256SUMS)` and `(cd benchmarks && sha256sum -c SHA256SUMS)`. The generic binary release intentionally omits private fixtures and official benchmarks. An archive hash checks transport integrity, not the authenticity of its source evidence.
+Transfer only to authorized recipients. Extract under an owner-private directory (`0700`), then check `(cd examples && sha256sum -c SHA256SUMS)` and `(cd benchmarks && sha256sum -c SHA256SUMS)`. Hashes check byte integrity, not the authenticity of source evidence.
