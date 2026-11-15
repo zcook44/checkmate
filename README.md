@@ -15,7 +15,7 @@ flowchart TD
         converter --> generated["CKLB review candidate + provenance sidecar"]
     end
     generated --> root["Owner-private CKLB --root"]
-    cisco["Separate converter: saved Cisco config + selected benchmark; two pinned L2S checks may be decided; others need review"] --> root
+    cisco["docket: saved Cisco config and the benchmark you named; pinned checks may be decided; the rest stay for review"] --> root
     external["Other vendor CKLBs"] --> root
     root -.-> inventory["Read-only --list OR --validate --schema"]
     subgraph editor["Checkmate: deliberate in-place review"]
@@ -32,14 +32,14 @@ flowchart TD
     edit -.-> stale["Existing provenance sidecar hash becomes stale"]
 ```
 
-Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. The separate converter's Cisco evaluator covers only two pinned IOS-XE Switch L2S V3R2 global checks; the complete all-`auto` inventories do not answer the remaining controls. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
+Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
 
 ## Run locally
 
 You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build writes to `release/`; that directory also contains tracked historical artifacts (see [disconnected installation](#disconnected-installation)):
 
 ```sh
-VERSION=0.4.2  # example candidate; choose an unused version
+VERSION=0.5.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 ./scripts/package.sh "$VERSION"
@@ -129,7 +129,7 @@ For an existing, owner-controlled OpenSCAP results tree, inspect its proposed pe
 ```sh
 ./scripts/fix-oscap-permissions.sh /path/to/oscap-results
 ./scripts/fix-oscap-permissions.sh --apply /path/to/oscap-results
-# Then use: stig-evidence batch-cklb --input-root /path/to/oscap-results \
+# Then use: docket batch-cklb --input-root /path/to/oscap-results \
 #   --library-root "$HOME/private/stig/stig_library" --dry-run
 ```
 
@@ -161,31 +161,29 @@ A multi-file edit is **not transactionally atomic**. If a later file fails, earl
 From the source tree on a build host with the vendored dependencies:
 
 ```sh
-VERSION=0.4.2  # example candidate; choose an unused version
+VERSION=0.5.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 ./scripts/package.sh "$VERSION"
 (cd release && sha256sum -c SHA256SUMS)
 ```
 
-The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. Historical archives, a private-input transfer archive, and a manifest in `release/` are tracked in this checkout; the freshly built executable is ignored. Reusing an existing version overwrites tracked archives and the manifest; choose a new candidate version and review `git status` afterward. Do not assume the release directory is private or wholly ignored. Transfer the appropriate freshly built `release/checkmate_${VERSION}_linux_<arch>.tar.gz` and `release/SHA256SUMS` to an authorized disconnected host. Verify its archive hash there, extract it, and install the binary in a user-owned location. No package repository, installation wizard, or dramatic appeal to the internet is required.
+The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archives, and `release/SHA256SUMS`. Historical archives, a private-input transfer archive, and a manifest in `release/` are tracked in this checkout; the freshly built executable is ignored. Reusing an existing version overwrites tracked archives and the manifest; choose a new candidate version and review `git status` afterward. Do not assume the release directory is private or wholly ignored. Transfer the freshly built `release/checkmate_${VERSION}_linux_<arch>.tar.gz` and `release/SHA256SUMS` together. The checksum file is useless if it arrives describing a different directory.
 
 ```sh
-VERSION=0.4.2  # match the package you transferred
-sha256sum -c SHA256SUMS --ignore-missing
-mkdir -p "$HOME/.local/bin"
-tar -xzf "checkmate_${VERSION}_linux_amd64.tar.gz"
-install -m 755 "checkmate_${VERSION}_linux_amd64/checkmate" "$HOME/.local/bin/checkmate"
+./scripts/install-checkmate.sh "release/checkmate_${VERSION}_linux_amd64.tar.gz"
 ```
 
-Each architecture archive contains the binary, this README, [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), the DISA JSON schema and its [provenance notice](schemas/PROVENANCE.md), with the same relative links inside the archive. It does **not** contain private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off GOSUMDB=off` and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
+`install-checkmate.sh` checks that archive's line in `SHA256SUMS`, installs `checkmate` onto `~/.local/bin`, and writes bash completion for every account at `/usr/share/bash-completion/completions/checkmate`. The completion write needs sudo, and the script stops if sudo cannot do it. `--from-source` builds this checkout and fails when Go is missing, older than `go.mod`, or unable to build from `vendor/` offline. No package repository is required.
+
+Each architecture archive contains the binary, this README, [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), the installer, the completion file, the DISA JSON schema and its [provenance notice](schemas/PROVENANCE.md). It does **not** contain private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off`, `GOSUMDB=off`, `GOTOOLCHAIN=local`, and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
 
 ```mermaid
 flowchart LR
     source["Source checkout: Go, vendor, scripts, docs, tracked fixtures"] --> pack["scripts/package.sh VERSION"]
     pack --> generic["Generic archive: binary + README + offline guide + schema + notice"]
     generic --> checksum["release/SHA256SUMS: local integrity check"]
-    checksum --> offline["Authorized disconnected host: verify, extract, run"]
+    checksum --> offline["Authorized disconnected host: install-checkmate.sh"]
     private["Private scans, CKLB copies, benchmarks, tailoring"] -.->|Separate authorized transfer; never in generic archive| offline
 ```
 

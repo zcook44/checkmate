@@ -2,7 +2,7 @@
 
 These are **invented test inputs**, not exports from Cisco devices and **not compliance evidence**. They exercise IOS and IOS-XE routers/switches, an IOS-XR router, a NX-OS switch and an ASA firewall. Addresses use documentation-only ranges; any authentication strings are deliberately nonfunctional placeholders. The examples are intended to exercise benchmark pairing and checklist review, **not deployment on a device**. Platform-specific syntax is illustrative and has not been parser-validated on hardware. One suspects the hardware would have opinions.
 
-**No example is asserted to be 95% compliant.** The checked-in CKLBs are historical unscored converter fixtures; their sidecars record the earlier evaluator. The current separate `stig-evidence cisco-cklb` can decide only two pinned IOS-XE Switch L2S V3R2 global STP checks from a suitable saved config; every unsupported or ambiguous control stays `not_reviewed`. Its all-`auto` inventories do not override those decisions. A rerun creates a distinct versioned CKLB rather than rewriting the checked-in fixtures. Official Cisco checks also require operational state, external services, policy applicability, and topology that config text alone cannot prove. Review each official check and collect independent show-command/state evidence for the remainder. Do not copy placeholder credentials into a real configuration.
+**No example is asserted to be 95% compliant.** The checked-in CKLBs are historical unscored converter fixtures; their sidecars record the earlier evaluator. The current separate `docket cisco-cklb` can decide the pinned IOS, IOS-XE, and NX-OS switch checks from a suitable saved config; every unsupported or ambiguous control stays `not_reviewed`. Its all-`auto` inventories do not override those decisions. A rerun creates a distinct versioned CKLB rather than rewriting the checked-in fixtures. Official Cisco checks also require operational state, external services, policy applicability, and topology that config text alone cannot prove. Review each official check and collect independent show-command/state evidence for the remainder. Do not copy placeholder credentials into a real configuration.
 
 ## Layout
 
@@ -22,7 +22,8 @@ The separate, private `burden-of-proof` source checkout tracks 25 Cisco manual X
 ```sh
 umask 077
 PRIVATE_FIXTURES="$HOME/private/checkmate-cisco-practice"  # choose a new path
-GOPROXY=off GOSUMDB=off go build -mod=vendor -o "$HOME/private/stig-evidence" ./cmd/stig-evidence
+# From the burden-of-proof checkout, not this one. This repository does not contain cmd/docket.
+GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS=-mod=vendor go build -mod=vendor -o "$HOME/private/docket" ./cmd/docket
 # Copy only the invented input fixtures, not the tracked generated checklists.
 install -d -m 700 "$PRIVATE_FIXTURES"
 cp -a examples/cisco-synthetic/manifest.json examples/cisco-synthetic/targets "$PRIVATE_FIXTURES/"
@@ -30,7 +31,7 @@ chmod 700 "$PRIVATE_FIXTURES/targets" "$PRIVATE_FIXTURES/targets"/*
 chmod 600 "$PRIVATE_FIXTURES/manifest.json" "$PRIVATE_FIXTURES/targets"/*/scan.running-config
 install -d -m 700 "$PRIVATE_FIXTURES/checklists"
 python3 scripts/generate-cisco-examples.py \
-  --converter "$HOME/private/stig-evidence" \
+  --converter "$HOME/private/docket" \
   --library-root "$HOME/private/stig-library-cisco" \
   --source-root "$PRIVATE_FIXTURES" \
   --output-root "$PRIVATE_FIXTURES/checklists"

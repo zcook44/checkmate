@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Make an owner-controlled OpenSCAP results tree suitable for stig-evidence.
+# Make an owner-controlled OpenSCAP results tree suitable for docket.
 set -euo pipefail
 umask 077
 usage() {

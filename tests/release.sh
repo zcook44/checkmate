@@ -16,7 +16,7 @@ for arch in amd64 arm64; do
   cmp docs/OFFLINE-EXAMPLES.md <(tar -xOzf "$archive" "$prefix/docs/OFFLINE-EXAMPLES.md")
   cmp schemas/SV3_CKLB_1_0_JSON_SCHEMA.json <(tar -xOzf "$archive" "$prefix/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json")
   cmp schemas/PROVENANCE.md <(tar -xOzf "$archive" "$prefix/schemas/PROVENANCE.md")
-  diff -u <(printf '%s\n' "$prefix/" "$prefix/checkmate" "$prefix/README.md" "$prefix/docs/" "$prefix/docs/OFFLINE-EXAMPLES.md" "$prefix/schemas/" "$prefix/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json" "$prefix/schemas/PROVENANCE.md" | sort) \
+  diff -u <(printf '%s\n' "$prefix/" "$prefix/checkmate" "$prefix/README.md" "$prefix/docs/" "$prefix/docs/OFFLINE-EXAMPLES.md" "$prefix/schemas/" "$prefix/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json" "$prefix/schemas/PROVENANCE.md" "$prefix/scripts/" "$prefix/scripts/install-checkmate.sh" "$prefix/scripts/checkmate-completion.bash" | sort) \
     <(tar -tzf "$archive" | sort)
 done
 printf '%s  %s\n' '8b88205de07662006e1660b1decad677d344828d6687b1dd26bca15105b7bb37' schemas/SV3_CKLB_1_0_JSON_SCHEMA.json | sha256sum -c -

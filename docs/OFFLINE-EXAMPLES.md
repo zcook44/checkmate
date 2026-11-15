@@ -22,15 +22,16 @@ The script selects the benchmark files available in the source library; it does 
 ## Exercise after an offline build
 
 ```sh
-VERSION=0.4.2  # choose a version not already present in release/
+VERSION=0.5.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
-GOPROXY=off GOSUMDB=off ./scripts/package.sh "$VERSION"
-./release/checkmate --root "$HOME/private/checkmate-practice/examples" --list
-./release/checkmate --root "$HOME/private/checkmate-practice/examples" --validate \
+GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS=-mod=vendor ./scripts/package.sh "$VERSION"
+./scripts/install-checkmate.sh "release/checkmate_${VERSION}_linux_amd64.tar.gz"
+checkmate --root "$HOME/private/checkmate-practice/examples" --list
+checkmate --root "$HOME/private/checkmate-practice/examples" --validate \
   --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"
 # Interactive editor; changes only your practice copies:
-./release/checkmate --root "$HOME/private/checkmate-practice/examples"
+checkmate --root "$HOME/private/checkmate-practice/examples"
 ```
 
 `--list` and `--validate --schema` are read-only; the editor replaces selected CKLBs in place. After an edit, the copied `examples/SHA256SUMS` fails until you explicitly account for that change or re-stage from the source. Existing converter provenance sidecars are not copied or refreshed. A successful schema check is not a finding review, a STIG Viewer import, or approval.
@@ -43,7 +44,7 @@ The optional `scripts/preflight-offline.sh` belongs to the **separate** converte
 
 ```sh
 /path/to/burden-of-proof/scripts/preflight-offline.sh \
-  --converter /private/bin/stig-evidence \
+  --converter /private/bin/docket \
   --input-root "$HOME/private/checkmate-practice/examples" \
   --library-root "$HOME/private/checkmate-practice/benchmarks" \
   --checkmate "$PWD/release/checkmate" \
