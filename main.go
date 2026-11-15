@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"sort"
 	"strings"
@@ -40,8 +41,10 @@ type group struct {
 type model struct {
 	files                                        []checklist.File
 	schema                                       *checklist.Schema
+	benchmark                                    string
 	groups                                       []group
-	cursor, host, filter                         int
+	cursor, host, filter, searchCursor           int
+	savedQuery, savedHostQuery                   string
 	severityFilter                               int
 	height, detailOffset                         int
 	stage                                        stage
@@ -114,7 +117,7 @@ func (m model) visible() []int {
 		if !matchFilter {
 			continue
 		}
-		if m.query != "" && !strings.Contains(strings.ToLower(g.sample.Benchmark+" "+g.sample.ID+" "+g.sample.RuleID+" "+g.sample.Title), strings.ToLower(m.query)) {
+		if !fuzzy(g.sample.Benchmark+" "+g.sample.ID+" "+g.sample.RuleID+" "+g.sample.Title, m.query) {
 			continue
 		}
 		out = append(out, i)
@@ -124,7 +127,7 @@ func (m model) visible() []int {
 func (m model) hostIndices(g group) []int {
 	out := []int{}
 	for i, ref := range g.matches {
-		if m.hostQuery == "" || strings.Contains(strings.ToLower(m.files[ref.file].Path), strings.ToLower(m.hostQuery)) {
+		if fuzzy(hostHay(m.files[ref.file].Path), m.hostQuery) {
 			out = append(out, i)
 		}
 	}
@@ -159,48 +162,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if k == "ctrl+c" {
 			return m, tea.Quit
 		}
-		if m.stage == search {
-			if k == "esc" {
-				m.stage = browse
-				return m, nil
-			}
-			if k == "enter" {
-				m.stage = browse
-				m.cursor = 0
-				m.clamp()
-				return m, nil
-			}
-			if k == "backspace" {
-				m.query = trimLast(m.query)
-			} else if msg.Type == tea.KeySpace {
-				m.query += " "
-			} else if msg.Type == tea.KeyRunes {
-				m.query += safe(string(msg.Runes))
-			}
-			return m, nil
-		}
-		if m.stage == hostSearch {
-			switch k {
-			case "esc":
-				m.stage = browse
-				return m, nil
-			case "enter":
-				m.stage = browse
-				m.cursor = 0
-				m.host = 0
-				m.clamp()
-				return m, nil
-			case "backspace":
-				m.hostQuery = trimLast(m.hostQuery)
-				return m, nil
-			}
-			if msg.Type == tea.KeySpace {
-				m.hostQuery += " "
-			}
-			if msg.Type == tea.KeyRunes {
-				m.hostQuery += safe(string(msg.Runes))
-			}
-			return m, nil
+		if m.stage == search || m.stage == hostSearch {
+			return m.updateSearch(msg)
 		}
 		if m.stage == comment {
 			switch k {
@@ -244,7 +207,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.stage == confirm {
-			m.moveHost(k, m.selectedCount())
+			m.moveHost(k, m.selectedCount(), m.confirmPage())
 			if k == "v" && m.selectedCount() > 0 {
 				m.detailOffset = 0
 				m.stage = preview
@@ -324,9 +287,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		visible := m.visible()
-		switch k {
-		case "q", "esc":
+		if k == "q" {
 			return m, tea.Quit
+		}
+		m.message = ""
+		if k == "esc" {
+			return m, nil
+		}
+		switch k {
 		case "j", "down":
 			m.cursor++
 			m.host = 0
@@ -344,7 +312,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "pgdown", "pgup", "home", "end":
 			if len(visible) > 0 {
-				m.moveHost(k, len(m.hostIndices(m.groups[visible[m.cursor]])))
+				n := len(m.hostIndices(m.groups[visible[m.cursor]]))
+				rows, _ := m.browseSplit(n)
+				m.moveHost(k, n, rows)
 			}
 		case "space", " ":
 			if len(visible) > 0 {
@@ -365,11 +335,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case "m":
 						ref.selected = shown[i] && m.filter != 0 && m.files[ref.file].Rules[ref.rule].Status == filters[m.filter]
 					case "A":
-						if shown[i] {
-							ref.selected = true
-						}
+						ref.selected = true
 					case "c":
 						ref.selected = false
+					}
+				}
+				if k == "A" && m.hostQuery != "" {
+					hidden := len(g.matches) - len(shown)
+					if hidden > 0 {
+						m.message = fmt.Sprintf("Selected %d hosts, %d hidden by the host search", len(g.matches), hidden)
 					}
 				}
 			}
@@ -382,8 +356,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			m.host = 0
 		case "/":
+			m.savedQuery = m.query
+			m.searchCursor = 0
 			m.stage = search
 		case "h":
+			m.savedHostQuery = m.hostQuery
+			m.searchCursor = 0
 			m.stage = hostSearch
 		case "v":
 			if len(visible) > 0 {
@@ -403,6 +381,139 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clamp()
 	}
 	return m, nil
+}
+func (m *model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	k := msg.String()
+	switch k {
+	case "esc":
+		if m.stage == search {
+			m.query = m.savedQuery
+		} else {
+			m.hostQuery = m.savedHostQuery
+		}
+		m.stage = browse
+		m.clamp()
+		return *m, nil
+	case "enter":
+		m.acceptSearch()
+		return *m, nil
+	case "up", "ctrl+p", "ctrl+k":
+		m.searchCursor = max(0, m.searchCursor-1)
+		return *m, nil
+	case "down", "ctrl+n", "ctrl+j":
+		m.searchCursor++
+		m.clampSearch()
+		return *m, nil
+	case "backspace":
+		m.editQuery(trimLast)
+	case "ctrl+u":
+		m.editQuery(func(string) string { return "" })
+	case "ctrl+w":
+		m.editQuery(trimWord)
+	default:
+		if msg.Type == tea.KeySpace {
+			m.editQuery(func(s string) string { return s + " " })
+		} else if msg.Type == tea.KeyRunes {
+			m.editQuery(func(s string) string { return s + safe(string(msg.Runes)) })
+		}
+	}
+	return *m, nil
+}
+func (m *model) editQuery(fn func(string) string) {
+	if m.stage == search {
+		m.query = fn(m.query)
+	} else {
+		m.hostQuery = fn(m.hostQuery)
+	}
+	m.clampSearch()
+	m.clamp()
+}
+func (m *model) clampSearch() {
+	n := len(m.visible())
+	if m.stage == hostSearch {
+		n = len(m.hostHitFiles())
+	}
+	if n == 0 {
+		m.searchCursor = 0
+		return
+	}
+	if m.searchCursor >= n {
+		m.searchCursor = n - 1
+	}
+	if m.searchCursor < 0 {
+		m.searchCursor = 0
+	}
+}
+func (m *model) acceptSearch() {
+	if m.stage == search {
+		vis := m.visible()
+		if len(vis) > 0 {
+			m.cursor = min(m.searchCursor, len(vis)-1)
+		}
+		m.host = 0
+	} else if hits := m.hostHitFiles(); len(hits) > 0 {
+		m.focusFile(hits[min(m.searchCursor, len(hits)-1)])
+	}
+	m.stage = browse
+	m.clamp()
+}
+func (m *model) focusFile(file int) {
+	for i, gi := range m.visible() {
+		g := m.groups[gi]
+		for hi, idx := range m.hostIndices(g) {
+			if g.matches[idx].file == file {
+				m.cursor = i
+				m.host = hi
+				return
+			}
+		}
+	}
+}
+func (m model) hostHitFiles() []int {
+	out := []int{}
+	for i, f := range m.files {
+		if fuzzy(hostHay(f.Path), m.hostQuery) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+func hostHay(path string) string {
+	return filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path)
+}
+func fuzzy(hay, needle string) bool {
+	if needle == "" {
+		return true
+	}
+	h := []rune(strings.ToLower(hay))
+	n := []rune(strings.ToLower(needle))
+	i := 0
+	for _, r := range n {
+		found := false
+		for i < len(h) {
+			if h[i] == r {
+				i++
+				found = true
+				break
+			}
+			i++
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+func trimWord(s string) string {
+	r := []rune(s)
+	i := len(r)
+	for i > 0 && r[i-1] == ' ' {
+		i--
+	}
+	for i > 0 && r[i-1] != ' ' {
+		i--
+	}
+	return string(r[:i])
 }
 func (m *model) apply() {
 	visible := m.visible()
@@ -441,6 +552,9 @@ func (m *model) apply() {
 		}
 		m.files[ref.file] = loaded
 		changed++
+	}
+	for i := range g.matches {
+		g.matches[i].selected = false
 	}
 	m.message = fmt.Sprintf("Updated %d checklist(s) in place", changed)
 	m.stage = browse
@@ -485,6 +599,12 @@ func clip(s string, max int) string {
 	}
 	return s
 }
+func loadChecklists(root, benchmark string) ([]checklist.File, error) {
+	if strings.TrimSpace(benchmark) == "" {
+		return checklist.Discover(root)
+	}
+	return checklist.DiscoverBenchmark(root, benchmark)
+}
 func (m model) View() string { return m.render() }
 func max(a, b int) int {
 	if a > b {
@@ -494,12 +614,13 @@ func max(a, b int) int {
 }
 func main() {
 	root := flag.String("root", "", "root directory of CKLB checklists")
+	benchmark := flag.String("benchmark", "", "CKLB stig_id to open; omit to open every newest checklist")
 	list := flag.Bool("list", false, "read-only inventory, no TUI")
-	validate := flag.Bool("validate", false, "validate newest CKLB per directory against an operator-supplied schema")
+	validate := flag.Bool("validate", false, "validate selected CKLBs against an operator-supplied schema")
 	schemaPath := flag.String("schema", "", "local JSON Schema Draft 2019-09 file; opt-in edit validation")
 	flag.Parse()
 	if *root == "" {
-		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--list | --validate --schema /private/schema.json | --schema /private/schema.json]")
+		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--benchmark STIG_ID] [--list | --validate --schema /private/schema.json | --schema /private/schema.json]")
 		os.Exit(2)
 	}
 	if *list && (*validate || *schemaPath != "") {
@@ -519,12 +640,15 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	files, err := checklist.Discover(*root)
+	files, err := loadChecklists(*root, *benchmark)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	if *list {
+		if strings.TrimSpace(*benchmark) != "" {
+			fmt.Printf("Benchmark: %s\n", strings.TrimSpace(*benchmark))
+		}
 		m := newModel(files)
 		for _, g := range m.groups {
 			fmt.Printf("%s  %s  %s  %s  (%d checklists)\n", g.sample.Benchmark, g.sample.ID, g.sample.Severity, clip(safe(g.sample.Title), 90), len(g.matches))
@@ -548,11 +672,16 @@ func main() {
 		if bad > 0 {
 			os.Exit(1)
 		}
-		fmt.Printf("Validated %d checklist(s) against supplied schema\n", len(files))
+		if strings.TrimSpace(*benchmark) != "" {
+			fmt.Printf("Validated %d checklist(s) for benchmark %s against supplied schema\n", len(files), strings.TrimSpace(*benchmark))
+		} else {
+			fmt.Printf("Validated %d checklist(s) against supplied schema\n", len(files))
+		}
 		return
 	}
 	m := newModel(files)
 	m.schema = schema
+	m.benchmark = strings.TrimSpace(*benchmark)
 	if _, err = tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

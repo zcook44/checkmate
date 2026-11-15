@@ -6,7 +6,7 @@ _checkmate_complete() {
   cur=${COMP_WORDS[COMP_CWORD]}
   prev=${COMP_WORDS[COMP_CWORD-1]}
   if [[ $cur == -* ]]; then
-    COMPREPLY=($(compgen -W "--root --list --validate --schema" -- "$cur"))
+    COMPREPLY=($(compgen -W "--root --benchmark --list --validate --schema" -- "$cur"))
     return
   fi
   case $prev in

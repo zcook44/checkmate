@@ -18,8 +18,8 @@ var statuses = map[string]bool{"open": true, "not_reviewed": true, "not_a_findin
 
 // Rule describes one checklist row. StigIndex/RuleIndex locate it in its original file.
 type Rule struct {
-	Benchmark, Release, ID, RuleID, Title, Severity, Status, Comment, Findings string
-	StigIndex, RuleIndex                                                       int
+	Benchmark, Release, ID, RuleID, Title, Severity, Status, Comment, Findings, Check string
+	StigIndex, RuleIndex                                                              int
 }
 type File struct {
 	Path   string
@@ -61,7 +61,7 @@ func parse(path string, data []byte) (File, error) {
 			if !ok {
 				return File{}, fmt.Errorf("%s: invalid rule", path)
 			}
-			r := Rule{Benchmark: benchmark, Release: text(stig, "release_info"), ID: text(row, "group_id"), RuleID: text(row, "rule_id"), Title: text(row, "rule_title"), Severity: text(row, "severity"), Status: text(row, "status"), Comment: text(row, "comments"), Findings: text(row, "finding_details"), StigIndex: si, RuleIndex: ri}
+			r := Rule{Benchmark: benchmark, Release: text(stig, "release_info"), ID: text(row, "group_id"), RuleID: text(row, "rule_id"), Title: text(row, "rule_title"), Severity: text(row, "severity"), Status: text(row, "status"), Comment: text(row, "comments"), Findings: text(row, "finding_details"), Check: text(row, "check_content"), StigIndex: si, RuleIndex: ri}
 			if r.ID == "" || r.RuleID == "" || !statuses[r.Status] {
 				return File{}, fmt.Errorf("%s: missing ID or unsupported status at STIG %d rule %d", path, si, ri)
 			}
@@ -126,8 +126,24 @@ func Preflight(f File, schema *Schema) error {
 	return removeErr
 }
 
+type candidate struct {
+	path  string
+	stamp int64
+	tie   string
+}
+
 // Discover selects the most recently modified CKLB in each directory; ties fail closed.
 func Discover(root string) ([]File, error) {
+	return discover(root, "")
+}
+
+// DiscoverBenchmark keeps, in each directory, the newest CKLB that contains benchmark.
+// benchmark is the CKLB stig_id, matched exactly. Rules from any other benchmark in that
+// file are omitted. An empty benchmark is Discover.
+func DiscoverBenchmark(root, benchmark string) ([]File, error) {
+	return discover(root, strings.TrimSpace(benchmark))
+}
+func discover(root, benchmark string) ([]File, error) {
 	info, err := os.Lstat(root)
 	if err != nil {
 		return nil, err
@@ -135,11 +151,8 @@ func Discover(root string) ([]File, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("%s: root must be a directory", root)
 	}
-	latest := map[string]struct {
-		path  string
-		stamp int64
-		tie   string
-	}{}
+	latest := map[string]candidate{}
+	present := map[string]bool{}
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -147,33 +160,44 @@ func Discover(root string) ([]File, error) {
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%s: symlink in checklist tree", p)
 		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.EqualFold(filepath.Ext(p), ".cklb") {
+		if d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".cklb") {
 			return nil
 		}
 		stat, err := regular(p)
 		if err != nil {
 			return err
 		}
-		dir := filepath.Dir(p)
-		stamp := stat.ModTime().UnixNano()
-		if prev, ok := latest[dir]; ok {
-			if prev.stamp == stamp {
-				prev.tie = p
-				latest[dir] = prev
-				return nil
+		if benchmark != "" {
+			ids, err := stigIDs(p)
+			if err != nil {
+				return err
 			}
-			if prev.stamp > stamp {
+			matched := false
+			for _, id := range ids {
+				if id == "" {
+					continue
+				}
+				present[id] = true
+				if id == benchmark {
+					matched = true
+				}
+			}
+			if !matched {
 				return nil
 			}
 		}
-		latest[dir] = struct {
-			path  string
-			stamp int64
-			tie   string
-		}{p, stamp, ""}
+		dir := filepath.Dir(p)
+		stamp := stat.ModTime().UnixNano()
+		prev, ok := latest[dir]
+		if ok && prev.stamp == stamp {
+			prev.tie = p
+			latest[dir] = prev
+			return nil
+		}
+		if ok && prev.stamp > stamp {
+			return nil
+		}
+		latest[dir] = candidate{path: p, stamp: stamp}
 		return nil
 	})
 	if err != nil {
@@ -182,6 +206,9 @@ func Discover(root string) ([]File, error) {
 	paths := make([]string, 0, len(latest))
 	for dir, item := range latest {
 		if item.tie != "" {
+			if benchmark != "" {
+				return nil, fmt.Errorf("%s: newest CKLB timestamp tie for benchmark %q (%s and %s)", dir, benchmark, item.path, item.tie)
+			}
 			return nil, fmt.Errorf("%s: newest CKLB timestamp tie (%s and %s)", dir, item.path, item.tie)
 		}
 		paths = append(paths, item.path)
@@ -193,12 +220,60 @@ func Discover(root string) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
+		if benchmark != "" {
+			kept := make([]Rule, 0, len(f.Rules))
+			for _, rule := range f.Rules {
+				if rule.Benchmark == benchmark {
+					kept = append(kept, rule)
+				}
+			}
+			f.Rules = kept
+			if len(f.Rules) == 0 {
+				continue
+			}
+		}
 		files = append(files, f)
 	}
 	if len(files) == 0 {
+		if benchmark != "" {
+			return nil, fmt.Errorf("no CKLB contains benchmark %q%s", benchmark, presentList(present))
+		}
 		return nil, errors.New("no CKLB files found")
 	}
 	return files, nil
+}
+func stigIDs(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Stigs []struct {
+			ID string `json:"stig_id"`
+		} `json:"stigs"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(doc.Stigs) == 0 {
+		return nil, fmt.Errorf("%s: no STIGs", path)
+	}
+	ids := make([]string, len(doc.Stigs))
+	for i, stig := range doc.Stigs {
+		ids[i] = stig.ID
+	}
+	return ids, nil
+}
+func presentList(ids map[string]bool) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(ids))
+	for id := range ids {
+		names = append(names, id)
+	}
+	sort.Strings(names)
+	return " (present: " + strings.Join(names, ", ") + ")"
 }
 
 // Edit replaces exactly one rule's status and comment in its selected checklist.

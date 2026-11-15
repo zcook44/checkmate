@@ -57,8 +57,14 @@ func TestConfirmationPagesSelectedHosts(t *testing.T) {
 	m = key(m, "2")
 	m = key(m, "x")
 	m = key(m, "enter")
-	if m.stage != confirm || !strings.Contains(m.View(), "55 selected") || lipgloss.Height(m.View()) > 24 {
-		t.Fatal(m.View())
+	view := m.View()
+	if m.stage != confirm || !strings.Contains(view, "55 selected") || !strings.Contains(view, "Confirm this change") || !strings.Contains(view, "Was  Open 55") || !strings.Contains(view, "Y apply") || !strings.Contains(view, "╔") || lipgloss.Height(view) > 24 {
+		t.Fatal(view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if lipgloss.Width(line) > 80 {
+			t.Fatalf("confirmation overflowed width: %d\n%s", lipgloss.Width(line), view)
+		}
 	}
 	m = viewKey(m, tea.KeyEnd)
 	if !strings.Contains(m.View(), "host-54") || lipgloss.Height(m.View()) > 24 {

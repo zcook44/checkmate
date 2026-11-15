@@ -19,12 +19,16 @@ func TestHostSearchLimitsDisplayedHostsAndSelectionScope(t *testing.T) {
 		m = key(m, string(r))
 	}
 	m = key(m, "enter")
-	if len(m.visible()) != 1 || !strings.Contains(m.View(), "r2") || strings.Contains(m.View(), "r1/scan.cklb") {
+	if len(m.visible()) != 1 || !strings.Contains(m.View(), "r2") || strings.Contains(m.View(), "r1/scan.cklb") || !strings.Contains(m.View(), "1 hidden by host search") {
 		t.Fatal(m.View())
 	}
 	m = key(m, "A")
-	if m.selectedCount() != 1 || m.files[m.selectedRefs()[0].file].Path != files[1].Path {
-		t.Fatal("select all selected hidden host")
+	if m.selectedCount() != 2 {
+		t.Fatal("select all left a host on this rule unselected")
+	}
+	m = key(m, "c")
+	if m.selectedCount() != 0 {
+		t.Fatal("deselect all left a host selected")
 	}
 }
 func TestStatusAndHostSearchIntersect(t *testing.T) {

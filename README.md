@@ -19,32 +19,34 @@ flowchart TD
     external["Other vendor CKLBs"] --> root
     root -.-> inventory["Read-only --list OR --validate --schema"]
     subgraph editor["Checkmate: deliberate in-place review"]
-        root --> discover["Newest CKLB per directory; fail on ties or symlinks"]
+        root --> discover["Newest CKLB per directory, or the newest file that contains --benchmark; ties and symlinks fail"]
         discover --> group["Group by benchmark, release, group ID and rule ID"]
-        group --> choose["Filter, inspect evidence, select hosts explicitly"]
+        group --> choose["Finder, filters, check text, found configs; select hosts explicitly"]
         choose --> preview["Choose status + comment; preview each old to new answer"]
         preview --> guard["Preflight selected files: unchanged bytes and writable staging"]
         schema["Bundled DISA CKLB schema; opt-in --schema"] -.->|Only with --schema| guard
-        guard --> confirm["Confirm; bulk Open to Not a Finding also requires OVERRIDE"]
+        guard --> confirm["Bordered panel over the host list; bulk Open to Not a Finding also requires OVERRIDE"]
         confirm --> edit["Replace selected CKLBs in place; report partial failures"]
     end
     edit --> human["Human review, independent validation, approval and delivery"]
     edit -.-> stale["Existing provenance sidecar hash becomes stale"]
 ```
 
-Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
+Version 1.0.0 is the same refusal to decide for you, with a finder, a confirm panel, and an optional benchmark so a mixed root does not become a group project. Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
 
 ## Run locally
 
 You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build writes to `release/`; that directory also contains tracked historical artifacts (see [disconnected installation](#disconnected-installation)):
 
 ```sh
-VERSION=0.5.0  # current release; choose a newer unused version to rebuild
+VERSION=1.0.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 ./scripts/package.sh "$VERSION"
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --list
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --benchmark Cisco_IOS_STIG --list
 ./release/checkmate --root "$HOME/private/stig/completed_ckl"                     # editor; no schema check
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --benchmark Cisco_IOS_STIG
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; validate selected files before writing
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --validate --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # read-only schema check
 ```
@@ -52,6 +54,8 @@ VERSION=0.5.0  # current release; choose a newer unused version to rebuild
 `--schema` is **opt-in**. Without it, Checkmate still requires parseable CKLB JSON, STIG/rule data, IDs, and a supported status, but does **not** run full JSON Schema validation. `--validate` requires `--schema` and checks every selected newest checklist without entering the TUI; `--list` is an inventory, not schema validation, and cannot be combined with either flag. With `--schema` in editor mode, every **selected file** is schema-checked during batch preflight before any write. The tool does not silently consult a default schema.
 
 Point `--root` at a directory of completed checklists. Checkmate walks it and selects the most recently modified `.cklb` **in each directory**. A tie for newest, invalid *basic* CKLB data, or a symlink in the tree stops the run. Guessing which assessment you meant would be a bold feature for a compliance tool. Other files are ignored. If one directory has multiple benchmark checklists, only its newest CKLB is considered; put independent checklists in separate directories.
+
+`--benchmark STIG_ID` is optional. The value is a CKLB `stig_id`, matched exactly, for example `Cisco_IOS_STIG` or `RHEL_9_STIG`. Checkmate then keeps, in each directory, the newest file that contains that benchmark, so a newer checklist for a different benchmark does not hide it. Rules from any other benchmark in the chosen file stay out of the session. Omit `--benchmark` and every newest checklist opens, same as before. A name that matches nothing stops the run and lists the benchmark IDs that were present. `--list` and `--validate` honor the same choice.
 
 Controls are grouped by benchmark ID, release text, group ID, and rule ID. Matching numbers from unrelated products or revisions do not earn a group photo together.
 
@@ -137,12 +141,12 @@ The path must be canonical and absolute (no symlink components); the script refu
 
 ## Drive the terminal
 
-- `j/k` or arrows: move between controls. `Tab`: focus a host. `Space`: include or exclude that host from the edit. Nothing starts selected; Checkmate has resisted the temptation to decide for your entire fleet.
-- `PgUp/PgDn`: move through affected hosts a page at a time. `Home/End`: jump to the first or last host; `Shift+Tab`: focus the previous host. The confirmation screen pages its selected-host list too. Fifty hosts no longer require a fifty-line terminal and a prayer.
-- `f`: cycle status filters; `F`: cycle severity filters; `/`: search IDs and titles; `h`: search checklist paths/hosts. Filtering does not select or silently expand the edit set.
-- `m`: replace this control's selection with hosts matching the active status filter (within the host search); with the default `all` filter, it clears selection. `A`: select all hosts visible under the host search; `c`: clear all selection for this control. Check the per-state counts in the confirmation screen before trusting an `A`. Quite the demanding letter.
-- `v`: read the focused host's paged full finding details and comment. In the confirmation screen, `v` opens a paged, full old/new status and comment preview for the focused selected host; `Tab` moves to the next selected host.
-- `e`: edit selected hosts. Choose `1` Open, `2` Not a Finding, `3` Not Applicable, or `4` Not Reviewed. Type a required comment (`Ctrl+J` inserts a newline), then Enter to review each selected host's old → new answer. `y` applies; Esc cancels; `q` quits. Bulk Open → Not a Finding also requires typing `OVERRIDE` in a second confirmation. That is not evidence; it is a speed bump with manners.
+- `j/k` or arrows: move between controls. `Tab`: focus a host. `Space`: include or exclude that host from the edit. Nothing starts selected; Checkmate has resisted the temptation to decide for your entire fleet. `Esc` clears a notice. `q` quits. `Esc` used to leave the building; that was a bold reading of cancel.
+- `PgUp/PgDn`: move through affected hosts a page at a time. `Home/End`: jump to the first or last host; `Shift+Tab`: focus the previous host. The confirmation panel pages its selected-host list too. Fifty hosts no longer require a fifty-line terminal and a prayer. Each row shows the host and its status. The full path stays on the focused line, where a long directory can be admired without shoving the status off the screen.
+- `f`: cycle status filters; `F`: cycle severity filters. `/` opens a finder for benchmark, group ID, rule ID, and title. `h` opens one for hosts. Both are bordered panels, because typing into the footer was how clues went to die. Type to filter, up and down to move, Enter to accept, Esc to restore the previous query. `ctrl+u` clears the line. `ctrl+w` drops the last word. Filtering does not select hosts. Selection remains a conscious act, tragically.
+- `m`: replace this control's selection with hosts matching the active status filter (within the host search); with the default `all` filter, it clears selection. `A`: select every host on this rule, including hosts the search is hiding. The host line says how many are hidden. It will not pretend your search was a moral boundary. `c`: deselect every host on this rule. Quite the demanding letter.
+- The browse screen shows the rule's check text under the host list, then the configuration recorded for the selected hosts. With nothing selected, that finding is the focused host. Hosts that recorded the same finding are named together. Hosts that differ get separate blocks, so a fleet of "mostly the same" does not collapse into one convenient sentence. `v` pages the full check text, every found configuration in the selection, and the comment. In the confirmation panel, `v` opens a paged old/new preview for the focused selected host; `Tab` moves to the next selected host.
+- `e`: edit selected hosts. Choose `1` Open, `2` Not a Finding, `3` Not Applicable, or `4` Not Reviewed. Type a required comment (`Ctrl+J` inserts a newline), then Enter. The host list stays up. A bordered panel shows the old status, the new status, the comment, and how many hosts were in each old state. The footer under that panel is the confirm keys, not the browse keys wearing a disguise. `y` applies; `n` or Esc cancels. A successful edit clears the selection and leaves the notice until you move, so the success line is not immediately replaced by your next accident. Bulk Open → Not a Finding also requires typing `OVERRIDE`. That is not evidence; it is a speed bump with manners.
 
 All four existing states are editable. **Select only hosts that actually share the decision**; a shared STIG ID is not a shared configuration. Full comments and finding details can be paged for review.
 
@@ -161,7 +165,7 @@ A multi-file edit is **not transactionally atomic**. If a later file fails, earl
 From the source tree on a build host with the vendored dependencies:
 
 ```sh
-VERSION=0.5.0  # current release; choose a newer unused version to rebuild
+VERSION=1.0.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 ./scripts/package.sh "$VERSION"

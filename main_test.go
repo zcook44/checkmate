@@ -72,7 +72,7 @@ func TestTUIShowsFullFindingDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := key(newModel(files), "v")
-	if !containsAll(m.View(), "Full finding details", "host data") {
+	if !containsAll(m.View(), "Check and findings", "Required check", "Found on", "host data") {
 		t.Fatal(m.View())
 	}
 }
@@ -98,8 +98,12 @@ func TestTUIEditsOnlySelectedHostAfterConfirmation(t *testing.T) {
 		t.Fatalf("not confirming: %s", m.View())
 	}
 	m = key(m, "y")
-	if m.stage != browse {
+	if m.stage != browse || m.selectedCount() != 0 || !strings.Contains(m.message, "Updated") {
 		t.Fatalf("did not return to browse: %s", m.View())
+	}
+	m = key(m, "j")
+	if m.message != "" {
+		t.Fatalf("notice stayed after moving: %s", m.message)
 	}
 	one, _ := os.ReadFile(p1)
 	two, _ := os.ReadFile(p2)
