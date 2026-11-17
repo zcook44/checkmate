@@ -200,3 +200,27 @@ GOPROXY=off GOSUMDB=off go test -mod=vendor ./...
 ```
 
 Keep new source scans and assessments outside this repository. This checkout already tracks selected `examples/` fixtures, `benchmarks/` content, and `release/private-offline-inputs.tar.gz` with copied RHEL scan bundles. Those are historical source-tree contents, **not** ingredients in the generic Checkmate binary archive. `.gitignore` patterns do not untrack files already in Git. Do not edit or add private assessment data to the repository; restrict access to this private remote and handle any removal from Git history as a separate, reviewed change. Stage new practice copies in an owner-private directory outside the checkout (see the [offline examples guide](docs/OFFLINE-EXAMPLES.md)). Inspect the archive manifest before distribution.
+
+## TODO: disconnected deployment notes
+
+Open items found during the first air-gapped end-to-end deployment. Notes will be appended as issues are discovered.
+
+### Install / packaging
+
+- [ ] ...
+
+### Configuration
+
+- [ ] ...
+
+### Usage / workflow
+
+- [ ] ...
+
+### Docs fixes
+
+- [ ] ...
+
+### Bugs / follow-ups
+
+- [ ] ...
