@@ -30,9 +30,11 @@ flowchart TD
     end
     edit --> human["Human review, independent validation, approval and delivery"]
     edit -.-> stale["Existing provenance sidecar hash becomes stale"]
+    edit -.-> tailor["--export-tailoring: rows every selected host already shares; rule_name stays manual"]
+    tailor -.-> benchmark
 ```
 
-Version 1.0.0 is the same refusal to decide for you, with a finder, a confirm panel, and an optional benchmark so a mixed root does not become a group project. Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
+Version 1.0.0 is the same refusal to decide for you, with a finder, a confirm panel, and an optional benchmark so a mixed root does not become a group project. `--export-tailoring` can write the rows every selected host already shares as a docket tailoring candidate. Those `rule_name` fields are placeholders, and an explicit status in that file replaces the next scan. Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. `--export-tailoring` is read-only too. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
 
 ## Run locally
 
@@ -49,13 +51,14 @@ VERSION=1.0.0  # current release; choose a newer unused version to rebuild
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --benchmark Cisco_IOS_STIG
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # editor; validate selected files before writing
 ./release/checkmate --root "$HOME/private/stig/completed_ckl" --validate --schema "$PWD/schemas/SV3_CKLB_1_0_JSON_SCHEMA.json"  # read-only schema check
+./release/checkmate --root "$HOME/private/stig/completed_ckl" --benchmark RHEL_9_STIG --export-tailoring "$HOME/private/stig/tailoring_export"  # read-only tailoring candidates
 ```
 
-`--schema` is **opt-in**. Without it, Checkmate still requires parseable CKLB JSON, STIG/rule data, IDs, and a supported status, but does **not** run full JSON Schema validation. `--validate` requires `--schema` and checks every selected newest checklist without entering the TUI; `--list` is an inventory, not schema validation, and cannot be combined with either flag. With `--schema` in editor mode, every **selected file** is schema-checked during batch preflight before any write. The tool does not silently consult a default schema.
+`--schema` is **opt-in**. Without it, Checkmate still requires parseable CKLB JSON, STIG/rule data, IDs, and a supported status, but does **not** run full JSON Schema validation. `--validate` requires `--schema` and checks every selected newest checklist without entering the TUI; `--list` is an inventory, not schema validation, and cannot be combined with either flag. With `--schema` in editor mode, every **selected file** is schema-checked during batch preflight before any write. The tool does not silently consult a default schema. `--export-tailoring` is also read-only: it does not edit CKLBs and cannot be combined with `--list`, `--validate`, or `--schema`.
 
 Point `--root` at a directory of completed checklists. Checkmate walks it and selects the most recently modified `.cklb` **in each directory**. A tie for newest, invalid *basic* CKLB data, or a symlink in the tree stops the run. Guessing which assessment you meant would be a bold feature for a compliance tool. Other files are ignored. If one directory has multiple benchmark checklists, only its newest CKLB is considered; put independent checklists in separate directories.
 
-`--benchmark STIG_ID` is optional. The value is a CKLB `stig_id`, matched exactly, for example `Cisco_IOS_STIG` or `RHEL_9_STIG`. Checkmate then keeps, in each directory, the newest file that contains that benchmark, so a newer checklist for a different benchmark does not hide it. Rules from any other benchmark in the chosen file stay out of the session. Omit `--benchmark` and every newest checklist opens, same as before. A name that matches nothing stops the run and lists the benchmark IDs that were present. `--list` and `--validate` honor the same choice.
+`--benchmark STIG_ID` is optional. The value is a CKLB `stig_id`, matched exactly, for example `Cisco_IOS_STIG` or `RHEL_9_STIG`. Checkmate then keeps, in each directory, the newest file that contains that benchmark, so a newer checklist for a different benchmark does not hide it. Rules from any other benchmark in the chosen file stay out of the session. Omit `--benchmark` and every newest checklist opens, same as before. A name that matches nothing stops the run and lists the benchmark IDs that were present. `--list`, `--validate`, and `--export-tailoring` honor the same choice.
 
 Controls are grouped by benchmark ID, release text, group ID, and rule ID. Matching numbers from unrelated products or revisions do not earn a group photo together.
 
@@ -112,7 +115,7 @@ sha256sum "$HOME/private/stig/schema/SV3_CKLB_1_0_JSON_SCHEMA.json"
 
 ## Prepare a private library and scan results
 
-These helper scripts are in the **source repository**, not the binary release archive. They are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install the separately bundled CKLB JSON schema.
+These helper scripts are in the **source repository**, not the binary release archive. They are for the **Go converter's** `--library-root` and `--input-root`. Checkmate itself takes a completed CKLB `--root`; it neither reads the STIG library nor imports OpenSCAP results. The scripts do not install the separately bundled CKLB JSON schema. `scripts/map-tailoring-rule-names.sh` is source-only as well. It reports SSG `rule_name` values for a file written by [`--export-tailoring`](#export-candidate-tailoring). It does not edit that file.
 
 To extract a new library from official RHEL or Cisco STIG ZIPs, or a directory containing ZIPs **directly** (not recursively), choose a destination that does not exist. The script streams only RHEL `U_RHEL_N_STIG_VxRy_Manual-xccdf.xml` and Cisco `U_Cisco_*STIG_VxRy_Manual-xccdf.xml` / `U_Cisco_*VxRy_STIG_Manual-xccdf.xml` entries to a flat, owner-private directory. Cisco filenames include IOS/IOS-XE/IOS-XR Router and Switch, ASA, ACI, ISE, NX-OS and SNA variants; for example `U_Cisco_IOS_Router_NDM_STIG_V3R9_Manual-xccdf.xml` and `U_Cisco_ACI_RTR_Manual_V1R2_STIG_Manual-xccdf.xml`. It does not unpack PDFs, scripts, or arbitrary archive paths, does not overwrite a library, and fails on duplicate benchmark filenames. The destination's parent must already exist, be owned by you, and not be group/world writable. Source ZIPs should be obtained and verified under your organization's DISA distribution procedures; this script does not authenticate an archive or validate the XCCDF's identity.
 
@@ -178,7 +181,7 @@ The build produces `release/checkmate` for Linux amd64, Linux amd64/arm64 archiv
 ./scripts/install-checkmate.sh "release/checkmate_${VERSION}_linux_amd64.tar.gz"
 ```
 
-`install-checkmate.sh` checks that archive's line in `SHA256SUMS`, installs `checkmate` onto `~/.local/bin`, and writes bash completion for every account at `/usr/share/bash-completion/completions/checkmate`. The completion write needs sudo, and the script stops if sudo cannot do it. `--from-source` builds this checkout and fails when Go is missing, older than `go.mod`, or unable to build from `vendor/` offline. No package repository is required.
+`install-checkmate.sh` checks that archive's line in `SHA256SUMS`, installs `checkmate` onto `~/.local/bin`, and writes bash completion for every account at `/usr/share/bash-completion/completions/checkmate`. Completion includes `--export-tailoring` with the other flags. It completes flag names, not private checklist trees. The completion write needs sudo, and the script stops if sudo cannot do it. `--from-source` builds this checkout and fails when Go is missing, older than `go.mod`, or unable to build from `vendor/` offline. No package repository is required.
 
 Each architecture archive contains the binary, this README, [`docs/OFFLINE-EXAMPLES.md`](docs/OFFLINE-EXAMPLES.md), the installer, the completion file, the DISA JSON schema and its [provenance notice](schemas/PROVENANCE.md). It does **not** contain private checklists, scan evidence, benchmarks, or tailoring. Build and test use vendored modules with `GOPROXY=off`, `GOSUMDB=off`, `GOTOOLCHAIN=local`, and `CGO_ENABLED=0`. Packages target Linux amd64 and arm64. Building an arm64 archive is not the same thing as running it on an arm64 host, however persuasive the filename looks.
 
@@ -193,34 +196,41 @@ flowchart LR
 
 For a **read-only deployment check**, use `scripts/preflight-offline.sh` from the separate `burden-of-proof` checkout, not from this Checkmate archive. Supply its executable converter, private scan and benchmark roots, and optionally Checkmate plus a completed-checklist root. It checks private tree ownership/modes and any root `SHA256SUMS`, runs converter `batch-cklb --dry-run`, and runs Checkmate `--list` (plus `--validate` only if you supply a schema). It creates and removes a private temporary workspace but does not scan hosts, convert evidence, or edit checklists. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md#read-only-deployment-preflight) for the exact invocation. A library's example tailoring YAML can be selected by the converter; preflight warns about it, but a dry run is **not** approval to use it as site policy.
 
-## Export to tailoring files
+## Export candidate tailoring
 
-Checkmate can analyze completed CKLBs and export common decisions to tailoring file templates for use with the docket converter. This closes the loop: decisions made during checklist review in one quarter can become policy for future quarterly scans.
+`--export-tailoring DIR` reads the selected CKLBs and writes docket tailoring **candidates**. It does not edit checklists, does not read an existing tailoring file, and does not install anything into a STIG library. One file is written per benchmark: `STIG_ID.tailoring.yaml`. A rule is included only when every selected checklist that contains that benchmark and release has the same status and the same comment. Hosts that disagree are omitted. Checkmate will not invent a majority. Two releases of the same benchmark stop the run rather than collapse into one library file.
+
+`not_reviewed` with an empty comment, or a comment containing `NOT REVIEWED`, is left out. Any other `not_reviewed` row is written as `status: auto`, which tells docket to keep the next scan's candidate. `open`, `not_a_finding`, and `not_applicable` are copied as explicit statuses. An explicit status replaces the scan result for **every** host converted with that library. The export cannot tell a reviewed decision from last quarter's scan result that merely happened to match. Read the file, and delete rows that are not policy, before it becomes site policy.
+
+`rule_name` is `PLACEHOLDER`. CKLB JSON does not carry the SCAP Security Guide remediation name docket expects. Fill those in before a conversion. From this source checkout, not from the generic archive:
 
 ```sh
-checkmate --root "$HOME/private/stig/completed_ckl" --export-tailoring "$HOME/private/stig/tailoring_export"
-# Or filter by benchmark:
-checkmate --root "$HOME/private/stig/completed_ckl" --benchmark RHEL_9_STIG --export-tailoring "$HOME/private/stig/tailoring_export"
+./scripts/map-tailoring-rule-names.sh \
+  "$HOME/private/stig/tailoring_export/RHEL_9_STIG.tailoring.yaml" \
+  "$HOME/private/stig/stig_library"
 ```
 
-The export analyzes all loaded CKLBs and identifies rules where **every host has identical status and comment**. Those common decisions are written as `BENCHMARK_STIG.tailoring.yaml` files in the specified output directory. Rules where hosts differ are not exported; Checkmate does not guess at policy when hosts disagree.
+The script reports `rule_name` values already present beside the same `stig_id` in a reference directory. It prints them. It does not edit the export. Names it cannot find still have to come from the converter's documentation or from SSG content.
 
-**Important:** The exported `rule_name` fields are `PLACEHOLDER` and must be completed manually before the files can be used with docket. The `rule_name` is the SSG (SCAP Security Guide) remediation rule name, which is not present in CKLB files. To find the correct values:
+The output directory is created at mode `0700` when it is missing. A symlink is refused. Each new file is mode `0600`. An existing file stops the run before anything is replaced. `--benchmark` limits the export the same way it limits `--list`.
 
-1. Reference existing tailoring files in the `benchmarks/` directory or your stig_library
-2. Consult the docket converter documentation or SSG content for your OS version
-3. Match by `stig_id` (V-number) and `sv_id` (SV-number) when cross-referencing
+```sh
+install -d -m 700 "$HOME/private/stig/tailoring_export"
+./release/checkmate --root "$HOME/private/stig/completed_ckl" \
+  --benchmark RHEL_9_STIG \
+  --export-tailoring "$HOME/private/stig/tailoring_export"
+```
 
-Exported tailoring files are owner-private `0600` and contain a header explaining the placeholder requirement. Once `rule_name` fields are completed, place the tailoring files at your `stig_library` root (alongside the XCCDF benchmarks) for use in docket conversions. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md) for the expected `stig_library` layout.
+After the placeholders are real rule names, install the file beside the manual XCCDF at the library root, mode `0600`:
 
-### Quarterly workflow with tailoring
+```sh
+install -m 600 "$HOME/private/stig/tailoring_export/RHEL_9_STIG.tailoring.yaml" \
+  "$HOME/private/stig/stig_library/RHEL_9_STIG.tailoring.yaml"
+```
 
-1. **Quarter 1 (discovery):** Scan, convert with docket (minimal tailoring), review with Checkmate, export common decisions
-2. **Post-quarter:** Complete `rule_name` fields in exported tailoring files, install to `stig_library`
-3. **Quarter 2+ (automation):** Scan, convert with docket using tailoring files — common decisions applied automatically
-4. Use Checkmate only for new findings, host-specific exceptions, and verification
+The next `docket batch-cklb` can select it. Tailoring applies to every host of that benchmark. A host-specific answer does not belong in it. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md) for the library layout. Checkmate does not run docket and does not decide that the export is approved.
 
-Tailoring policy applies to **every host of that benchmark** during conversion. A rule exported as tailoring should represent an organization-wide decision, not a host-specific finding. Use `--benchmark` with `--export-tailoring` to generate separate policy per OS if quarterly assessments cover multiple platforms.
+For a quarterly rescan, review one quarter in the editor, export the rows every host already shares, finish `rule_name`, and point the next conversion at that library. The following quarter still needs a person for new findings and for anything the hosts did not agree on.
 
 ## Development
 

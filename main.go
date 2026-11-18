@@ -689,26 +689,16 @@ func main() {
 		return
 	}
 	if *exportTailoring != "" {
-		if err := os.MkdirAll(*exportTailoring, 0700); err != nil {
-			fmt.Fprintf(os.Stderr, "Cannot create output directory: %v\n", err)
+		written, err := checklist.WriteTailoringExports(*exportTailoring, checklist.AnalyzeTailoring(files, true))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		tailoringFiles := checklist.AnalyzeTailoring(files, true)
-		if len(tailoringFiles) == 0 {
-			fmt.Fprintln(os.Stderr, "No common patterns found to export. All hosts must have identical status/comment for a rule to be exported.")
-			os.Exit(1)
-		}
-		for _, tf := range tailoringFiles {
-			filename := filepath.Join(*exportTailoring, tf.Benchmark+".tailoring.yaml")
-			yaml := checklist.FormatTailoringYAML(tf)
-			if err := os.WriteFile(filename, []byte(yaml), 0600); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to write %s: %v\n", filename, err)
-				os.Exit(1)
-			}
-			fmt.Printf("Exported %d rules to %s\n", len(tf.Entries), filename)
-			fmt.Printf("  Benchmark: %s\n", tf.Benchmark)
-			fmt.Printf("  Release: %s\n", tf.Release)
-			fmt.Printf("  WARNING: rule_name fields are PLACEHOLDER - must be filled in manually before use with docket\n")
+		for _, w := range written {
+			fmt.Printf("Exported %d rules to %s\n", w.Count, w.Path)
+			fmt.Printf("  Benchmark: %s\n", w.Benchmark)
+			fmt.Printf("  Release: %s\n", w.Release)
+			fmt.Printf("  WARNING: rule_name fields are PLACEHOLDER. Fill them in before docket uses this file. Explicit statuses replace the next scan.\n")
 		}
 		return
 	}

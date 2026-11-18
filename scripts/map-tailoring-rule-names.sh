@@ -64,13 +64,21 @@ while IFS= read -r STIG_ID; do
     if [ -z "$STIG_ID" ]; then
         continue
     fi
-    
-    # Search for this STIG ID in reference files
-    MATCH=$(grep -A1 "$STIG_ID" "$REFERENCE_DIR"/*.tailoring.yaml 2>/dev/null | grep "rule_name:" | head -1 | sed 's/.*rule_name: //' || true)
-    
-    if [ -n "$MATCH" ]; then
-        echo "✓ $STIG_ID → rule_name: $MATCH"
+    # Reference files list rule_name before stig_id. -A1 would see sv_id, not the name.
+    names=$(grep -h -B3 -E "^[[:space:]]*stig_id:[[:space:]]*${STIG_ID}[[:space:]]*(#.*)?$" "$REFERENCE_DIR"/*.tailoring.yaml 2>/dev/null \
+        | grep -E 'rule_name:' \
+        | sed -E 's/^[[:space:]]*-?[[:space:]]*rule_name:[[:space:]]*//; s/[[:space:]]+#.*//; s/[[:space:]]+$//' \
+        | sort -u || true)
+    count=0
+    if [ -n "$names" ]; then
+        count=$(printf '%s\n' "$names" | grep -c .)
+    fi
+    if [ "$count" -eq 1 ]; then
+        echo "✓ $STIG_ID → rule_name: $names"
         FOUND=$((FOUND + 1))
+    elif [ "$count" -gt 1 ]; then
+        echo "? $STIG_ID → multiple rule_name values: $(printf '%s\n' "$names" | paste -sd, -)"
+        NOT_FOUND=$((NOT_FOUND + 1))
     else
         echo "✗ $STIG_ID → rule_name: NOT FOUND in references"
         NOT_FOUND=$((NOT_FOUND + 1))

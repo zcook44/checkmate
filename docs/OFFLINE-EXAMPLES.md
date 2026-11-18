@@ -17,7 +17,7 @@ python3 scripts/stage-offline-examples.py \
 (cd "$HOME/private/checkmate-practice/benchmarks" && sha256sum -c SHA256SUMS)
 ```
 
-The script selects the benchmark files available in the source library; it does not authenticate DISA bytes or validate the source CKLB against the separate schema. The examples are private copied assessment material, not sanitized demonstration data. Tailoring YAML is converter policy input, never a Checkmate input; an example policy requires separate site approval before use.
+The script selects the benchmark files available in the source library; it does not authenticate DISA bytes or validate the source CKLB against the separate schema. The examples are private copied assessment material, not sanitized demonstration data. Tailoring YAML is converter policy input. Checkmate does not read it. `--export-tailoring` can write a candidate from reviewed CKLBs; an example policy still requires separate site approval before use.
 
 ## Exercise after an offline build
 
@@ -36,6 +36,17 @@ checkmate --root "$HOME/private/checkmate-practice/examples"
 ```
 
 `--list` and `--validate --schema` are read-only; the editor replaces selected CKLBs in place. `--benchmark RHEL_9_STIG` opens that benchmark and leaves the others for another sitting. Omit it and every newest checklist opens, which is either the plan or a very long afternoon. `/` and `h` open finders. They do not select hosts. After an edit, the copied `examples/SHA256SUMS` fails until you explicitly account for that change or re-stage from the source. Existing converter provenance sidecars are not copied or refreshed. A successful schema check is not a finding review, a STIG Viewer import, or approval.
+
+To draft tailoring from the practice copies, write somewhere new. Do not point the export at `benchmarks/`: those YAML files are hashed, and replacing them with placeholders is not a policy update. One host per OS means almost every non-default row looks unanimous. That is a sample, not a fleet.
+
+```sh
+install -d -m 700 "$HOME/private/checkmate-practice/tailoring-export"
+checkmate --root "$HOME/private/checkmate-practice/examples" \
+  --benchmark RHEL_9_STIG \
+  --export-tailoring "$HOME/private/checkmate-practice/tailoring-export"
+```
+
+`rule_name` in that file is `PLACEHOLDER`. Explicit statuses would override the next scan for every host of that benchmark. From the source checkout, `scripts/map-tailoring-rule-names.sh` can report names already used beside the same `stig_id` in `benchmarks/` or another library. It does not edit the export. The script is not in the generic archive. Do not treat the draft as approved site policy.
 
 To test conversion read-only, run the **separate** converter's `batch-cklb --dry-run` using absolute `--input-root "$HOME/private/checkmate-practice/examples"` and `--library-root "$HOME/private/checkmate-practice/benchmarks"`. The staged bundles include HTML+ARF; whether a particular converter build accepts them must be checked with that build. Permission and naming validity alone do not establish assessment correctness.
 

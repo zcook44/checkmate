@@ -6,11 +6,11 @@ _checkmate_complete() {
   cur=${COMP_WORDS[COMP_CWORD]}
   prev=${COMP_WORDS[COMP_CWORD-1]}
   if [[ $cur == -* ]]; then
-    COMPREPLY=($(compgen -W "--root --benchmark --list --validate --schema" -- "$cur"))
+    COMPREPLY=($(compgen -W "--root --benchmark --list --validate --schema --export-tailoring" -- "$cur"))
     return
   fi
   case $prev in
-    --root|--schema) COMPREPLY=($(compgen -f -- "$cur")) ;;
+    --root|--schema|--export-tailoring) COMPREPLY=($(compgen -f -- "$cur")) ;;
   esac
 }
 complete -F _checkmate_complete checkmate
