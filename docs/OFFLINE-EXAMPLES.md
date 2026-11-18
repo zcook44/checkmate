@@ -22,7 +22,7 @@ The script selects the benchmark files available in the source library; it does 
 ## Exercise after an offline build
 
 ```sh
-VERSION=1.0.0  # current release; choose a newer unused version to rebuild
+VERSION=1.1.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOFLAGS=-mod=vendor ./scripts/package.sh "$VERSION"

@@ -34,14 +34,14 @@ flowchart TD
     tailor -.-> benchmark
 ```
 
-Version 1.0.0 is the same refusal to decide for you, with a finder, a confirm panel, and an optional benchmark so a mixed root does not become a group project. `--export-tailoring` can write the rows every selected host already shares as a docket tailoring candidate. Those `rule_name` fields are placeholders, and an explicit status in that file replaces the next scan. Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. `--export-tailoring` is read-only too. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
+Version 1.1.0 is the same refusal to decide for you, with a finder, a confirm panel, and an optional benchmark so a mixed root does not become a group project. `--export-tailoring` can write the rows every selected host already shares as a docket tailoring candidate. Those `rule_name` fields are placeholders, and an explicit status in that file replaces the next scan. Start with `--list` to inspect the discovered files; `--validate --schema PATH` is an optional **read-only** check, not an edit or a signoff. `--export-tailoring` is read-only too. The converter is `docket`, in the burden-of-proof checkout. Its Cisco evaluator can decide the pinned IOS, IOS-XE, and NX-OS switch checks. An all-`auto` inventory does not answer the ones it leaves Not Reviewed. In the editor, no hosts start selected. Filter and inspect each host, explicitly select only those sharing a justified answer, preview the exact old → new status and comment, then confirm. A common control ID is not a fleet-wide finding. Checkmate does not regenerate the converter's provenance, make a multi-file edit transactional, or replace a human approval process. For RHEL 7–10 practice inputs, see [offline examples](docs/OFFLINE-EXAMPLES.md). That guide is packaged; its data is not. For invented Cisco configurations and generated review candidates, see `examples/cisco-synthetic/GUIDE.md` in the source checkout (not the archive). Neither path is a substitute for independent evidence.
 
 ## Run locally
 
 You need Go to build it. The resulting binary, sensibly, does not need Go to supervise it. The build writes to `release/`; that directory also contains tracked historical artifacts (see [disconnected installation](#disconnected-installation)):
 
 ```sh
-VERSION=1.0.0  # current release; choose a newer unused version to rebuild
+VERSION=1.1.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 ./scripts/package.sh "$VERSION"
@@ -168,7 +168,7 @@ A multi-file edit is **not transactionally atomic**. If a later file fails, earl
 From the source tree on a build host with the vendored dependencies:
 
 ```sh
-VERSION=1.0.0  # current release; choose a newer unused version to rebuild
+VERSION=1.1.0  # current release; choose a newer unused version to rebuild
 [ ! -e "release/checkmate_${VERSION}_linux_amd64.tar.gz" ] &&
 [ ! -e "release/checkmate_${VERSION}_linux_arm64.tar.gz" ] &&
 ./scripts/package.sh "$VERSION"
