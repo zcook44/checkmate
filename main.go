@@ -618,17 +618,26 @@ func main() {
 	list := flag.Bool("list", false, "read-only inventory, no TUI")
 	validate := flag.Bool("validate", false, "validate selected CKLBs against an operator-supplied schema")
 	schemaPath := flag.String("schema", "", "local JSON Schema Draft 2019-09 file; opt-in edit validation")
+	exportTailoring := flag.String("export-tailoring", "", "export common decisions to tailoring YAML file(s); specify output directory")
 	flag.Parse()
 	if *root == "" {
-		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--benchmark STIG_ID] [--list | --validate --schema /private/schema.json | --schema /private/schema.json]")
+		fmt.Fprintln(os.Stderr, "usage: checkmate --root /private/checklists [--benchmark STIG_ID] [--list | --validate --schema /private/schema.json | --schema /private/schema.json | --export-tailoring /output/dir]")
 		os.Exit(2)
 	}
-	if *list && (*validate || *schemaPath != "") {
-		fmt.Fprintln(os.Stderr, "--list cannot be combined with --validate or --schema")
+	if *list && (*validate || *schemaPath != "" || *exportTailoring != "") {
+		fmt.Fprintln(os.Stderr, "--list cannot be combined with --validate, --schema, or --export-tailoring")
 		os.Exit(2)
 	}
 	if *validate && *schemaPath == "" {
 		fmt.Fprintln(os.Stderr, "--validate requires --schema /path/to/extracted-schema.json")
+		os.Exit(2)
+	}
+	if *validate && *exportTailoring != "" {
+		fmt.Fprintln(os.Stderr, "--validate cannot be combined with --export-tailoring")
+		os.Exit(2)
+	}
+	if *exportTailoring != "" && *schemaPath != "" {
+		fmt.Fprintln(os.Stderr, "--export-tailoring cannot be combined with --schema")
 		os.Exit(2)
 	}
 	var schema *checklist.Schema
@@ -676,6 +685,30 @@ func main() {
 			fmt.Printf("Validated %d checklist(s) for benchmark %s against supplied schema\n", len(files), strings.TrimSpace(*benchmark))
 		} else {
 			fmt.Printf("Validated %d checklist(s) against supplied schema\n", len(files))
+		}
+		return
+	}
+	if *exportTailoring != "" {
+		if err := os.MkdirAll(*exportTailoring, 0700); err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot create output directory: %v\n", err)
+			os.Exit(1)
+		}
+		tailoringFiles := checklist.AnalyzeTailoring(files, true)
+		if len(tailoringFiles) == 0 {
+			fmt.Fprintln(os.Stderr, "No common patterns found to export. All hosts must have identical status/comment for a rule to be exported.")
+			os.Exit(1)
+		}
+		for _, tf := range tailoringFiles {
+			filename := filepath.Join(*exportTailoring, tf.Benchmark+".tailoring.yaml")
+			yaml := checklist.FormatTailoringYAML(tf)
+			if err := os.WriteFile(filename, []byte(yaml), 0600); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to write %s: %v\n", filename, err)
+				os.Exit(1)
+			}
+			fmt.Printf("Exported %d rules to %s\n", len(tf.Entries), filename)
+			fmt.Printf("  Benchmark: %s\n", tf.Benchmark)
+			fmt.Printf("  Release: %s\n", tf.Release)
+			fmt.Printf("  WARNING: rule_name fields are PLACEHOLDER - must be filled in manually before use with docket\n")
 		}
 		return
 	}

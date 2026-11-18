@@ -193,6 +193,35 @@ flowchart LR
 
 For a **read-only deployment check**, use `scripts/preflight-offline.sh` from the separate `burden-of-proof` checkout, not from this Checkmate archive. Supply its executable converter, private scan and benchmark roots, and optionally Checkmate plus a completed-checklist root. It checks private tree ownership/modes and any root `SHA256SUMS`, runs converter `batch-cklb --dry-run`, and runs Checkmate `--list` (plus `--validate` only if you supply a schema). It creates and removes a private temporary workspace but does not scan hosts, convert evidence, or edit checklists. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md#read-only-deployment-preflight) for the exact invocation. A library's example tailoring YAML can be selected by the converter; preflight warns about it, but a dry run is **not** approval to use it as site policy.
 
+## Export to tailoring files
+
+Checkmate can analyze completed CKLBs and export common decisions to tailoring file templates for use with the docket converter. This closes the loop: decisions made during checklist review in one quarter can become policy for future quarterly scans.
+
+```sh
+checkmate --root "$HOME/private/stig/completed_ckl" --export-tailoring "$HOME/private/stig/tailoring_export"
+# Or filter by benchmark:
+checkmate --root "$HOME/private/stig/completed_ckl" --benchmark RHEL_9_STIG --export-tailoring "$HOME/private/stig/tailoring_export"
+```
+
+The export analyzes all loaded CKLBs and identifies rules where **every host has identical status and comment**. Those common decisions are written as `BENCHMARK_STIG.tailoring.yaml` files in the specified output directory. Rules where hosts differ are not exported; Checkmate does not guess at policy when hosts disagree.
+
+**Important:** The exported `rule_name` fields are `PLACEHOLDER` and must be completed manually before the files can be used with docket. The `rule_name` is the SSG (SCAP Security Guide) remediation rule name, which is not present in CKLB files. To find the correct values:
+
+1. Reference existing tailoring files in the `benchmarks/` directory or your stig_library
+2. Consult the docket converter documentation or SSG content for your OS version
+3. Match by `stig_id` (V-number) and `sv_id` (SV-number) when cross-referencing
+
+Exported tailoring files are owner-private `0600` and contain a header explaining the placeholder requirement. Once `rule_name` fields are completed, place the tailoring files at your `stig_library` root (alongside the XCCDF benchmarks) for use in docket conversions. See the [offline examples guide](docs/OFFLINE-EXAMPLES.md) for the expected `stig_library` layout.
+
+### Quarterly workflow with tailoring
+
+1. **Quarter 1 (discovery):** Scan, convert with docket (minimal tailoring), review with Checkmate, export common decisions
+2. **Post-quarter:** Complete `rule_name` fields in exported tailoring files, install to `stig_library`
+3. **Quarter 2+ (automation):** Scan, convert with docket using tailoring files — common decisions applied automatically
+4. Use Checkmate only for new findings, host-specific exceptions, and verification
+
+Tailoring policy applies to **every host of that benchmark** during conversion. A rule exported as tailoring should represent an organization-wide decision, not a host-specific finding. Use `--benchmark` with `--export-tailoring` to generate separate policy per OS if quarterly assessments cover multiple platforms.
+
 ## Development
 
 ```sh
